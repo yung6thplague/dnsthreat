@@ -760,9 +760,10 @@ def generate_unbound_config(
     """
     Gera e escreve o ficheiro de configuração do Unbound DNS Sinkhole.
 
-    Formato gerado para cada domínio:
-        local-zone: "dominio.com" redirect
-        local-data: "dominio.com A 10.0.2.15"
+    Formato estrito exigido pelo Unbound:
+        server:
+            local-zone: "dominio.com" redirect
+            local-data: "dominio.com A 10.0.2.15"
 
     Args:
         domains:     Set de FQDNs únicos a bloquear
@@ -773,6 +774,7 @@ def generate_unbound_config(
     """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+    # Cabeçalho com comentários iniciando obrigatoriamente por '# '
     header = (
         f"# ============================================================\n"
         f"# DNS Sinkhole — Threat Intelligence Block List\n"
@@ -782,13 +784,13 @@ def generate_unbound_config(
         f"# Sinkhole IP: {sinkhole_ip}\n"
         f"# NAO EDITES ESTE FICHEIRO MANUALMENTE — Sera sobrescrito!\n"
         f"# ============================================================\n\n"
+        f"server:\n"
     )
 
     lines = [header]
     for domain in sorted(domains):
-        lines.append(f'local-zone: "{domain}" redirect\n')
-        lines.append(f'local-data: "{domain} A {sinkhole_ip}"\n')
-        lines.append("\n")
+        lines.append(f'    local-zone: "{domain}" redirect\n')
+        lines.append(f'    local-data: "{domain} A {sinkhole_ip}"\n')
 
     config_content = "".join(lines)
 
