@@ -1,0 +1,13 @@
+FONTES de IOCS:
+Alimentação principal
+URLhaus
+ThreatFox
+AlienVault OTX
+Feodo Tracker
+AbuselPDB
+MalwareBazaar
+
+Complementar:
+PhishTank /OpenPhish
+SpamHaus DROP/EDROP
+CINS Army List

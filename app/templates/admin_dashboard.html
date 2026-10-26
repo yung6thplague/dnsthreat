@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOC Telemetria &bull; DNS Threat Blocker</title>
+
+  <!-- Tailwind CSS via CDN (Strictly CDN, no npm) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              dark: '#080c14',
+              surface: '#0f172a',
+              card: '#1e293b',
+              border: '#334155',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Subtle background grid */
+    .bg-grid {
+      background-size: 32px 32px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-[#080c14] text-slate-200 min-h-screen bg-grid selection:bg-rose-500 selection:text-white flex flex-col justify-between">
+
+  <!-- Navigation Bar -->
+  <nav class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      
+      <!-- Logo & System Status -->
+      <div class="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-start">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-rose-900/30">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h1 class="text-base font-bold text-white tracking-wide">DNS Threat Blocker</h1>
+              <span class="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                UNBOUND SINKHOLE
+              </span>
+            </div>
+            <p class="text-xs text-slate-400">Painel de Telemetria SOC &bull; Projeto de Licenciatura</p>
+          </div>
+        </div>
+
+        <a href="/" target="_blank" class="sm:hidden text-xs text-slate-400 hover:text-slate-200 underline">
+          Ver Alerta &rarr;
+        </a>
+      </div>
+
+      <!-- Live Controls -->
+      <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+        <div class="flex items-center space-x-2 bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>SQLite WAL</span>
+          <span class="text-slate-600">|</span>
+          <span id="live-clock">--:--:-- UTC</span>
+        </div>
+
+        <!-- Refresh Button -->
+        <button id="btn-refresh" onclick="refreshDashboard()" class="inline-flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-medium transition shadow-sm">
+          <svg id="refresh-icon" class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span>Atualizar</span>
+        </button>
+
+        <a href="/" target="_blank" class="hidden sm:inline-flex items-center space-x-1 text-xs text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 px-3 py-1.5 rounded-lg transition">
+          <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+          <span>Testar Bloqueio</span>
+        </a>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-grow space-y-8">
+
+    <!-- KPI Metric Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- Total Blocks -->
+      <div class="relative overflow-hidden bg-slate-900/80 border border-slate-800 hover:border-rose-500/50 rounded-2xl p-5 shadow-lg transition duration-300">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Total de Bloqueios</p>
+            <h3 class="text-3xl font-extrabold text-white mt-1 font-mono" id="stat-total-blocks">
+              {{ total_blocks }}
+            </h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            </svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center text-xs text-rose-400/90 font-medium">
+          <span>Interceções absolutas via Unbound</span>
+        </div>
+      </div>
+
+      <!-- Unique Malicious Domains -->
+      <div class="relative overflow-hidden bg-slate-900/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-5 shadow-lg transition duration-300">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Domínios Únicos</p>
+            <h3 class="text-3xl font-extrabold text-white mt-1 font-mono" id="stat-unique-domains">
+              {{ unique_domains }}
+            </h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
+            </svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center text-xs text-amber-400/90 font-medium">
+          <span>Identificados em Threat Feeds</span>
+        </div>
+      </div>
+
+      <!-- Unique Client Victims -->
+      <div class="relative overflow-hidden bg-slate-900/80 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-5 shadow-lg transition duration-300">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Clientes Afetados</p>
+            <h3 class="text-3xl font-extrabold text-white mt-1 font-mono" id="stat-unique-clients">
+              {{ unique_clients }}
+            </h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center text-xs text-cyan-400/90 font-medium">
+          <span>Endereços IP de rede protegidos</span>
+        </div>
+      </div>
+
+      <!-- Total IoC Database -->
+      <div class="relative overflow-hidden bg-slate-900/80 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-5 shadow-lg transition duration-300">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-slate-400">IoCs na Base Local</p>
+            <h3 class="text-3xl font-extrabold text-white mt-1 font-mono" id="stat-total-iocs">
+              {{ total_iocs }}
+            </h3>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+            </svg>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center text-xs text-indigo-400/90 font-medium">
+          <span>Tabela `ioc_entries` ativa</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Top 5 Blocked Domains & Architecture Overview -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Top 5 Blocked Domains (2 Columns) -->
+      <div class="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center space-x-2">
+            <div class="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-white">Top 5 Domínios Mais Acedidos (Bloqueados)</h2>
+              <p class="text-xs text-slate-400">Indicadores com maior frequência de consulta nos logs</p>
+            </div>
+          </div>
+          <span class="text-xs font-mono text-slate-500">Agrupado por Host</span>
+        </div>
+
+        <!-- Top Domains List -->
+        <div class="space-y-4" id="top-domains-list">
+          {% if top_domains and top_domains|length > 0 %}
+            {% for item in top_domains %}
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 hover:border-slate-700 transition">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center space-x-2 truncate">
+                    <span class="w-5 h-5 rounded-md bg-rose-950 text-rose-400 border border-rose-800 flex items-center justify-center text-xs font-mono font-bold">
+                      {{ loop.index }}
+                    </span>
+                    <span class="font-mono text-sm font-semibold text-rose-300 truncate">{{ item.domain }}</span>
+                  </div>
+                  <div class="flex items-center space-x-2 flex-shrink-0">
+                    <span class="text-xs font-mono text-slate-400">{{ item.percentage }}%</span>
+                    <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      {{ item.count }} tentativas
+                    </span>
+                  </div>
+                </div>
+                <!-- Percentage Bar -->
+                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div class="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-500" style="width: {{ item.percentage }}%"></div>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="py-10 text-center text-slate-500">
+              <svg class="w-10 h-10 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <p class="text-sm">Nenhum pedido malicioso registado ainda.</p>
+              <p class="text-xs text-slate-600 mt-1">Os dados aparecerão assim que o DNS Unbound encaminhar tráfego.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sinkhole Architecture Status (1 Column) -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center space-x-2 mb-4">
+            <div class="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-white">Topologia do Sinkhole</h2>
+              <p class="text-xs text-slate-400">Integração Unbound DNS (Linux)</p>
+            </div>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <span class="text-slate-400 block font-medium mb-1">Mecanismo de Desvio Unbound:</span>
+              <p class="font-mono text-[11px] text-cyan-300">local-zone: "malicious.io" redirect</p>
+              <p class="font-mono text-[11px] text-emerald-400">local-data: "malicious.io A &lt;IP_WEBSERVER&gt;"</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <span class="text-slate-400 block font-medium mb-1">Persistência SQLite:</span>
+              <div class="flex items-center justify-between text-slate-300">
+                <span>Modo de Concorrência:</span>
+                <span class="text-emerald-400 font-mono font-bold">WAL (Write-Ahead)</span>
+              </div>
+              <div class="flex items-center justify-between text-slate-300 mt-1">
+                <span>Timeout de Bloqueio:</span>
+                <span class="text-indigo-400 font-mono">5000 ms</span>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+              <span class="text-slate-400 block font-medium mb-1">Registo HTTP Catch-All:</span>
+              <p class="text-slate-300">
+                Qualquer chamada em <code class="text-rose-400 font-mono">/{path:path}</code> extrai o cabeçalho <code class="text-amber-400 font-mono">Host</code> e persiste na auditoria.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-500">
+          <span>Porta Web Sinkhole: <strong class="text-slate-300">80/TCP</strong></span>
+          <span>DNS Engine: <strong class="text-slate-300">53/UDP</strong></span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Audit Logs Section (Last 10 Records) -->
+    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div class="flex items-center space-x-2">
+          <div class="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Últimos 10 Registos de Auditoria</h2>
+            <p class="text-xs text-slate-400">Histórico de acessos intercetados da tabela <code class="text-slate-300 font-mono">access_logs</code></p>
+          </div>
+        </div>
+
+        <!-- Filter Input -->
+        <div class="w-full sm:w-auto flex items-center space-x-2">
+          <div class="relative w-full sm:w-64">
+            <input 
+              type="text" 
+              id="log-search" 
+              placeholder="Filtrar por domínio ou IP..." 
+              oninput="filterLogs()"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+            />
+            <svg class="w-3.5 h-3.5 text-slate-500 absolute right-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-800">
+        <table class="w-full text-left text-xs" id="audit-table">
+          <thead class="bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800 font-mono text-[11px]">
+            <tr>
+              <th scope="col" class="py-3 px-4">ID</th>
+              <th scope="col" class="py-3 px-4">Data/Hora (UTC)</th>
+              <th scope="col" class="py-3 px-4">Domínio Intercetado</th>
+              <th scope="col" class="py-3 px-4">IP do Cliente</th>
+              <th scope="col" class="py-3 px-4">User-Agent</th>
+              <th scope="col" class="py-3 px-4 text-right">Ação</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/80 bg-slate-900/40" id="audit-tbody">
+            {% if recent_logs and recent_logs|length > 0 %}
+              {% for log in recent_logs %}
+                <tr class="hover:bg-slate-800/40 transition log-row">
+                  <td class="py-3.5 px-4 font-mono text-slate-400">#{{ log.id }}</td>
+                  <td class="py-3.5 px-4 font-mono text-slate-300 whitespace-nowrap">{{ log.timestamp }}</td>
+                  <td class="py-3.5 px-4">
+                    <span class="font-mono font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                      {{ log.domain_requested }}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4">
+                    <span class="font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/40">
+                      {{ log.client_ip }}
+                    </span>
+                  </td>
+                  <td class="py-3.5 px-4 max-w-xs truncate text-slate-400" title="{{ log.user_agent }}">
+                    {{ log.user_agent }}
+                  </td>
+                  <td class="py-3.5 px-4 text-right">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      SINKHOLED
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="py-8 text-center text-slate-500 text-xs">
+                  Ainda não existem registos de auditoria gravados na base de dados.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+        <span>Mostrando os <strong class="text-slate-300">últimos 10 registos</strong> em ordem decrescente.</span>
+        <button onclick="downloadCSV()" class="hover:text-slate-300 underline font-mono text-[11px]">
+          Exportar Visualização (.csv)
+        </button>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Dashboard Footer -->
+  <footer class="bg-slate-900 border-t border-slate-800 py-4 px-4 sm:px-8 mt-12 text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div>
+        <span class="font-medium text-slate-400">DNS Sinkhole SOC Dashboard</span> &bull; Camada Web em FastAPI + Uvicorn + SQLite WAL
+      </div>
+      <div class="flex items-center space-x-4">
+        <span>Unbound DNS Integration</span>
+        <span>&bull;</span>
+        <span class="text-emerald-400">Proteção Ativa</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Frontend Logic for Live Clock, Filtering, and Refresh -->
+  <script>
+    // Live Clock UTC
+    function updateClock() {
+      const now = new Date();
+      const utcString = now.toISOString().replace('T', ' ').substring(11, 19) + ' UTC';
+      document.getElementById('live-clock').innerText = utcString;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Table Filtering
+    function filterLogs() {
+      const input = document.getElementById('log-search').value.toLowerCase();
+      const rows = document.querySelectorAll('.log-row');
+      rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(input) ? '' : 'none';
+      });
+    }
+
+    // Refresh Dashboard via /api/stats
+    async function refreshDashboard() {
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('animate-spin');
+
+      try {
+        const response = await fetch('/api/stats');
+        if (response.ok) {
+          const data = await response.json();
+          // Update KPI counters
+          document.getElementById('stat-total-blocks').innerText = data.total_blocks;
+          document.getElementById('stat-unique-domains').innerText = data.unique_domains;
+          document.getElementById('stat-unique-clients').innerText = data.unique_clients;
+          document.getElementById('stat-total-iocs').innerText = data.total_iocs;
+
+          // Rebuild Top 5 Domains
+          const topList = document.getElementById('top-domains-list');
+          if (data.top_domains && data.top_domains.length > 0) {
+            topList.innerHTML = data.top_domains.map((item, idx) => `
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 hover:border-slate-700 transition">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center space-x-2 truncate">
+                    <span class="w-5 h-5 rounded-md bg-rose-950 text-rose-400 border border-rose-800 flex items-center justify-center text-xs font-mono font-bold">
+                      ${idx + 1}
+                    </span>
+                    <span class="font-mono text-sm font-semibold text-rose-300 truncate">${escapeHtml(item.domain)}</span>
+                  </div>
+                  <div class="flex items-center space-x-2 flex-shrink-0">
+                    <span class="text-xs font-mono text-slate-400">${item.percentage}%</span>
+                    <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      ${item.count} tentativas
+                    </span>
+                  </div>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div class="bg-gradient-to-r from-rose-500 to-amber-500 h-2 rounded-full transition-all duration-500" style="width: ${item.percentage}%"></div>
+                </div>
+              </div>
+            `).join('');
+          }
+
+          // Rebuild Audit Logs
+          const tbody = document.getElementById('audit-tbody');
+          if (data.recent_logs && data.recent_logs.length > 0) {
+            tbody.innerHTML = data.recent_logs.map(log => `
+              <tr class="hover:bg-slate-800/40 transition log-row">
+                <td class="py-3.5 px-4 font-mono text-slate-400">#${log.id}</td>
+                <td class="py-3.5 px-4 font-mono text-slate-300 whitespace-nowrap">${escapeHtml(log.timestamp)}</td>
+                <td class="py-3.5 px-4">
+                  <span class="font-mono font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                    ${escapeHtml(log.domain_requested)}
+                  </span>
+                </td>
+                <td class="py-3.5 px-4">
+                  <span class="font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/40">
+                    ${escapeHtml(log.client_ip)}
+                  </span>
+                </td>
+                <td class="py-3.5 px-4 max-w-xs truncate text-slate-400" title="${escapeHtml(log.user_agent || '')}">
+                  ${escapeHtml(log.user_agent || 'Unknown')}
+                </td>
+                <td class="py-3.5 px-4 text-right">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    SINKHOLED
+                  </span>
+                </td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to refresh stats:', err);
+      } finally {
+        setTimeout(() => icon.classList.remove('animate-spin'), 600);
+      }
+    }
+
+    // Auto-refresh every 12 seconds
+    setInterval(refreshDashboard, 12000);
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Export CSV function
+    function downloadCSV() {
+      const rows = document.querySelectorAll('#audit-table tr');
+      let csv = [];
+      for (let i = 0; i < rows.length; i++) {
+        let row = [], cols = rows[i].querySelectorAll('td, th');
+        for (let j = 0; j < cols.length; j++) {
+          row.push('"' + cols[j].innerText.replace(/"/g, '""').trim() + '"');
+        }
+        csv.push(row.join(','));
+      }
+      const csvFile = new Blob([csv.join('\n')], { type: 'text/csv' });
+      const downloadLink = document.createElement('a');
+      downloadLink.download = 'sinkhole_audit_logs.csv';
+      downloadLink.href = window.URL.createObjectURL(csvFile);
+      downloadLink.style.display = 'none';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    }
+  </script>
+</body>
+</html>
