@@ -1,30 +1,14 @@
 #!/usr/bin/env python3
 """
-sync_iocs.py — DNS Sinkhole Threat Intelligence Synchronization Engine
-========================================================================
-Engenheiro: SecOps / Python Sénior
-Projeto:    DNS Sinkhole baseado em Unbound + Painel FastAPI/SQLite
-Versão:     2.0.0
-
+sync_iocs.py — DNS Threat Blocker
+0
 Descrição:
     Script autónomo de Threat Intelligence que descarrega, processa e
     unifica Indicadores de Compromisso (IoCs) de múltiplas fontes OSINT
     abertas, aplica-os na configuração do Unbound (DNS Sinkhole) e
     persiste os dados na base de dados de telemetria SQLite.
 
-Fontes Implementadas (texto direto, sem API key):
-    ✅  URLhaus          — abuse.ch: URLs de distribuição de malware
-    ✅  Feodo Tracker    — abuse.ch: C2 de botnets (Emotet, TrickBot, etc.)
-    ✅  OpenPhish        — Phishing URLs activos
-    ✅  SpamHaus DROP    — Redes controladas por criminosos
-    ✅  SpamHaus EDROP   — Redes secundárias de criminosos
-    ✅  CINS Army List   — IPs/domínios de reputação negativa
 
-Fontes Futuras (estrutura preparada, requer API key):
-    🔲  ThreatFox        — abuse.ch IoC database
-    🔲  AlienVault OTX   — Open Threat Exchange
-    🔲  AbuseIPDB        — IP blacklist com contexto
-    🔲  MalwareBazaar    — abuse.ch malware samples
 
 Requisitos:
     - Python 3.9+
