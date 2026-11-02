@@ -100,7 +100,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def render_banner() -> None:
-    """Renderiza o banner ASCII de Dtblocker com estética hacker/SecOps."""
+    """Renderiza o banner ASCII de Dtblocker"""
     clear_screen()
 
     banner_text = ""
@@ -114,11 +114,19 @@ def render_banner() -> None:
     if not banner_text:
         # Fallback de alta fidelidade em ASCII nativo (estilo Slant/Cyberpunk)
         banner_text = f"""{ANSI_CYAN}{ANSI_BOLD}
-    ____  __  __     __           __             
-   / __ \/ /_/ /_   / /___  _____/ /_____  _____ 
-  / / / / __/ __ \ / / __ \/ ___/ //_/ _ \/ ___/ 
- / /_/ / /_/ /_/ // / /_/ / /__/ ,< /  __/ /     
-/_____/\__/_.___//_/\____/\___/_/|_|\___/_/      
+print("\033[0;37m                                                                       \033[0m")
+print("\033[0;37m▀▀▀▀██▄ ░░░     ░░░     ░░░                     ░░░                    \033[0m")
+print("\033[0;37m░░░ ███ ▒▒▒     ▒▒▒     ▒▒▒                     ▒▒▒                    \033[0m")
+print("\033[0;37m▒▒▒ ███ ▓▓▓▄▄   ▓▓▓     ▓▓▓                     ▓▓▓                    \033[0m")
+print("\033[0;37m▓▓▓ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄\033[0m")
+print("\033[0;37m███ ███ ███     ███ ███ ███     ███ ███ ███ ███ ███ ███ ███ ███ ███ ███\033[0m")
+print("\033[0;37m███ ███ ███     ███ ███ ███     ███ ███ ███ ▀▀▀ ███▀██▄ ███▀▀▀▀ ███    \033[0m")
+print("\033[0;37m███ ███ ███ ▄▄▄ ███ ███ ███ ▄▄▄ ███ ███ ███ ███ ███ ███ ███ ███ ███    \033[0m")
+print("\033[0;37m███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███    \033[0m")
+print("\033[0;37m███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    \033[0m")
+print("\033[0;37m          ▀█    █▀        ▀█      █▀      █▀        █▀    █▀     ▀█    \033[0m")
+print("\033[0;37m           ▄    ▄          ▄      ▄       ▄         ▄     ▄       ▄    \033[0m")
+   
 {ANSI_RESET}"""
 
     if HAS_RICH and rich_console:
@@ -138,7 +146,7 @@ def render_banner() -> None:
     else:
         print(banner_text)
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
-        print(f" {ANSI_BOLD}DNS Threat Blocker & SOC Sinkhole Control Center{ANSI_RESET}")
+        print(f" {ANSI_BOLD}DNS Threat Blocker {ANSI_RESET}")
         print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
 
@@ -146,7 +154,7 @@ def render_banner() -> None:
 def display_menu() -> None:
     """Apresenta o menu de seleção de opções formatado."""
     if HAS_RICH and rich_console:
-        table = Table(title="[bold white]MENU DE OPERAÇÕES SECOPS[/bold white]", show_header=True, header_style="bold magenta", border_style="cyan")
+        table = Table(title="[bold white]MENU DE OPERAÇÕES [/bold white]", show_header=True, header_style="bold magenta", border_style="cyan")
         table.add_column("Opção", justify="center", style="bold green", width=8)
         table.add_column("Ação", style="bold white", width=38)
         table.add_column("Comando Associado", style="dim yellow")
