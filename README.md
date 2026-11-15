@@ -1,6 +1,6 @@
 # DNS Threat Blocker & Sinkhole Telemetry
 
-Solução integrada de **DNS Sinkhole** e **Threat Intelligence / SecOps**, desenvolvida com **FastAPI**, **Unbound DNS** e **SQLite (WAL mode)** para intercetar tráfego malicioso na rede interna e fornecer telemetria em tempo real para analistas de SOC.
+Solução integrada de **DNS Sinkhole** e **Threat Intelligence **, desenvolvida com **FastAPI**, **Unbound DNS** e **SQLite (WAL mode)** para intercetar tráfego malicioso na rede interna e fornecer telemetria em tempo real para analistas de SOC.
 
 ---
 

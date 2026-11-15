@@ -2,14 +2,6 @@
 """
 sync_iocs.py — DNS Threat Blocker
 0
-Descrição:
-    Script autónomo de Threat Intelligence que descarrega, processa e
-    unifica Indicadores de Compromisso (IoCs) de múltiplas fontes OSINT
-    abertas, aplica-os na configuração do Unbound (DNS Sinkhole) e
-    persiste os dados na base de dados de telemetria SQLite.
-
-
-
 Requisitos:
     - Python 3.9+
     - pip install requests
