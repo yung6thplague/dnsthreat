@@ -37,8 +37,21 @@ import requests
 UNBOUND_CONF_PATH = Path("/etc/unbound/unbound.conf.d/threat_feed.conf")
 DATABASE_PATH = Path("/home/pserver/dnsthreat/data/telemetry.db")
 
-# IP de sinkhole — endereço para onde os domínios bloqueados são redirecionados
-SINKHOLE_IP = "10.0.2.15"
+# IP de sinkhole — deteção dinâmica do IP da interface de rede ativa
+# Utiliza socket UDP para 8.8.8.8:80 (sem enviar tráfego) para identificar
+# automaticamente o IP local atribuído pela rede Wi-Fi/Ethernet atual.
+def get_local_ip() -> str:
+    """Deteta dinamicamente o IP IPv4 local da interface de rede ativa."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except (OSError, socket.error):
+        return "127.0.0.1"
+
+
+SINKHOLE_IP = get_local_ip()
 
 # Timeouts e comportamento de rede
 REQUEST_TIMEOUT_SECONDS = 30
@@ -750,7 +763,10 @@ def generate_unbound_config(
     """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Cabeçalho com comentários iniciando obrigatoriamente por '# '
+    # Cabeçalho com comentários + diretiva server: obrigatória
+    # NOTA: NÃO incluir interface:, access-control: ou outras diretivas de rede
+    # pois essas configurações já existem em /etc/unbound/unbound.conf principal.
+    # Este ficheiro contém APENAS regras de redirecionamento local-zone/local-data.
     header = (
         f"# ============================================================\n"
         f"# DNS Sinkhole — Threat Intelligence Block List\n"
@@ -934,44 +950,48 @@ def persist_iocs_to_database(
 # RESTART DO SERVIÇO UNBOUND
 # ---------------------------------------------------------------------------
 
-def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> None:
+def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> bool:
     """
     Reinicia o serviço Unbound via systemctl para aplicar a nova configuração.
 
     Fluxo de segurança:
-        1. Valida a configuração com `unbound-checkconf`
-        2. Só reinicia se a configuração for válida
-        3. Em caso de configuração inválida, termina com exit code 1
+        1. Valida a configuração com `sudo unbound-checkconf`
+        2. Só reinicia se a configuração retornar código 0 (sem erros)
+        3. Em caso de configuração inválida, imprime o erro exato sem derrubar o serviço
 
     Args:
         logger:  Logger do módulo principal
         dry_run: Se True, simula o comando sem executar
+
+    Returns:
+        True se o restart foi bem sucedido, False caso contrário
     """
     if dry_run:
         logger.info(
             "[DRY-RUN] Comandos NAO executados: "
             "unbound-checkconf + systemctl restart unbound"
         )
-        return
+        return True
 
-    # 1. Valida a configuração antes de reiniciar
-    logger.info("A validar configuracao Unbound (unbound-checkconf)...")
+    # 1. Valida a configuração ANTES de reiniciar (gate de segurança)
+    logger.info("A validar configuracao Unbound (sudo unbound-checkconf)...")
     try:
         check_result = subprocess.run(
-            ["unbound-checkconf"],
+            ["sudo", "unbound-checkconf"],
             capture_output=True,
             text=True,
             timeout=15,
         )
         if check_result.returncode != 0:
             logger.critical(
-                "Configuracao Unbound INVALIDA — Restart cancelado!\n"
+                "Configuracao Unbound INVALIDA — Restart CANCELADO!\n"
+                "O servico DNS NAO foi afetado (protecao ativa).\n"
                 "Saida: %s\n"
                 "Erros: %s",
                 check_result.stdout.strip(),
                 check_result.stderr.strip(),
             )
-            sys.exit(1)
+            return False
         logger.info(
             "Configuracao valida: %s",
             check_result.stdout.strip() or "OK",
@@ -981,17 +1001,18 @@ def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> None:
     except subprocess.TimeoutExpired:
         logger.warning("Timeout na validacao da configuracao — continuando...")
 
-    # 2. Reinicia o serviço
+    # 2. Reinicia o serviço (apenas se a validação passou)
     logger.info("A reiniciar servico Unbound...")
     try:
         result = subprocess.run(
-            ["systemctl", "restart", "unbound"],
+            ["sudo", "systemctl", "restart", "unbound"],
             capture_output=True,
             text=True,
             timeout=30,
         )
         if result.returncode == 0:
             logger.info("Unbound reiniciado com sucesso.")
+            return True
         else:
             logger.error(
                 "Falha ao reiniciar Unbound (exit code: %d)\n"
@@ -1001,22 +1022,25 @@ def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> None:
                 result.stdout.strip(),
                 result.stderr.strip(),
             )
+            return False
     except FileNotFoundError:
         logger.error(
             "`systemctl` nao encontrado. "
             "Este script requer um sistema Linux com systemd."
         )
+        return False
     except subprocess.TimeoutExpired:
         logger.error(
             "Timeout ao reiniciar Unbound (>30s). "
             "Verifica o estado com: sudo systemctl status unbound"
         )
+        return False
     except PermissionError:
         logger.critical(
             "PERMISSAO NEGADA ao executar systemctl.\n"
             "Execute o script com: sudo python3 sync_iocs.py"
         )
-        sys.exit(1)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1077,6 +1101,7 @@ Exemplos:
   sudo python3 sync_iocs.py --dry-run      # Simula sem escrever nada
   sudo python3 sync_iocs.py --verbose      # Modo debug verboso
   sudo python3 sync_iocs.py --no-restart   # Sem reiniciar Unbound
+  sudo python3 sync_iocs.py --refresh-ip   # Atualiza IP no threat_feed.conf sem descarregar feeds
         """,
     )
     parser.add_argument(
@@ -1110,9 +1135,98 @@ Exemplos:
         "--sinkhole-ip",
         type=str,
         default=SINKHOLE_IP,
-        help=f"IP de destino do sinkhole. Default: {SINKHOLE_IP}",
+        help=f"IP de destino do sinkhole. Default: auto-detetado ({SINKHOLE_IP})",
+    )
+    parser.add_argument(
+        "--refresh-ip",
+        action="store_true",
+        help=(
+            "Modo rapido: reescreve o threat_feed.conf com o IP atual "
+            "sem re-descarregar os feeds OSINT da internet. "
+            "Ideal ao mudar de rede Wi-Fi."
+        ),
     )
     return parser.parse_args()
+
+
+def refresh_sinkhole_ip(
+    conf_path: Path,
+    new_ip: str,
+    logger: logging.Logger,
+    dry_run: bool = False,
+) -> bool:
+    """
+    Reescreve rapidamente o IP no threat_feed.conf existente sem re-descarregar feeds.
+
+    Lê o ficheiro atual, substitui todas as ocorrências do IP antigo pelo novo,
+    valida com unbound-checkconf e reinicia o Unbound.
+
+    Ideal para quando o utilizador muda de rede Wi-Fi e o IP da VM muda.
+
+    Args:
+        conf_path: Caminho para o threat_feed.conf
+        new_ip:    Novo IP dinâmico detetado
+        logger:    Logger do módulo
+        dry_run:   Se True, simula sem escrever
+
+    Returns:
+        True se concluído com sucesso, False caso contrário
+    """
+    if not conf_path.exists():
+        logger.error(
+            "Ficheiro %s nao encontrado.\n"
+            "Executa primeiro uma sincronizacao completa: sudo python3 sync_iocs.py",
+            conf_path,
+        )
+        return False
+
+    content = conf_path.read_text(encoding="utf-8")
+
+    # Extrai o IP antigo do cabeçalho (linha '# Sinkhole IP: x.x.x.x')
+    old_ip_match = re.search(r"# Sinkhole IP:\s*(\d+\.\d+\.\d+\.\d+)", content)
+    if old_ip_match:
+        old_ip = old_ip_match.group(1)
+    else:
+        # Fallback: extrai o IP da primeira regra local-data
+        data_match = re.search(r'local-data:.*?A\s+(\d+\.\d+\.\d+\.\d+)', content)
+        if data_match:
+            old_ip = data_match.group(1)
+        else:
+            logger.error("Nao foi possivel detetar o IP antigo em %s", conf_path)
+            return False
+
+    if old_ip == new_ip:
+        logger.info(
+            "IP ja esta atualizado (%s). Nenhuma alteracao necessaria.", new_ip
+        )
+        return True
+
+    logger.info("A atualizar IP do Sinkhole: %s -> %s", old_ip, new_ip)
+
+    # Substituição global do IP antigo pelo novo
+    new_content = content.replace(old_ip, new_ip)
+
+    # Atualiza o timestamp no cabeçalho
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    new_content = re.sub(
+        r"# Data:.*",
+        f"# Data: {timestamp}",
+        new_content,
+    )
+
+    if dry_run:
+        logger.info("[DRY-RUN] IP seria atualizado de %s para %s em %s", old_ip, new_ip, conf_path)
+        return True
+
+    try:
+        conf_path.write_text(new_content, encoding="utf-8")
+        logger.info("Ficheiro %s atualizado com IP %s", conf_path, new_ip)
+    except (PermissionError, OSError) as exc:
+        logger.critical("Erro ao escrever em %s: %s", conf_path, exc)
+        return False
+
+    # Validar e reiniciar
+    return restart_unbound(logger=logger, dry_run=dry_run)
 
 
 def main() -> None:
@@ -1123,11 +1237,12 @@ def main() -> None:
         1. Parse de argumentos CLI
         2. Configuração do logger
         3. Verificação de privilégios root
-        4. Download e processamento de todas as feeds OSINT
-        5. Geração do ficheiro de configuração Unbound
-        6. Persistência na base de dados SQLite
-        7. Restart do serviço Unbound (opcional)
-        8. Relatório final de execução
+        4. Se --refresh-ip: apenas atualiza o IP no ficheiro existente e reinicia
+        5. Download e processamento de todas as feeds OSINT
+        6. Geração do ficheiro de configuração Unbound
+        7. Persistência na base de dados SQLite
+        8. Restart do serviço Unbound (opcional)
+        9. Relatório final de execução
     """
     args = parse_arguments()
     logger = setup_logging(verbose=args.verbose)
@@ -1137,6 +1252,20 @@ def main() -> None:
 
     if args.dry_run:
         logger.info("MODO DRY-RUN ACTIVADO — Nenhuma alteracao sera aplicada.")
+
+    # --- Modo Rápido: Apenas atualizar IP (sem re-descarregar feeds) ---
+    if args.refresh_ip:
+        logger.info("=" * 65)
+        logger.info("MODO REFRESH-IP — Atualizacao rapida de IP no Sinkhole")
+        logger.info("IP detetado: %s", args.sinkhole_ip)
+        logger.info("=" * 65)
+        success = refresh_sinkhole_ip(
+            conf_path=args.conf_path,
+            new_ip=args.sinkhole_ip,
+            logger=logger,
+            dry_run=args.dry_run,
+        )
+        sys.exit(0 if success else 1)
 
     start_time = time.monotonic()
 

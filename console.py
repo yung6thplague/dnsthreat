@@ -25,6 +25,21 @@ from typing import List, Optional
 # Diretório base do projeto (/home/pserver/dnsthreat ou raiz onde está console.py)
 PROJECT_DIR: Path = Path(__file__).resolve().parent
 
+# Importa a função de deteção dinâmica de IP
+sys.path.insert(0, str(PROJECT_DIR))
+try:
+    from app.config import get_local_ip
+except ImportError:
+    # Fallback inline caso o import falhe (ex: venv não ativado)
+    import socket
+    def get_local_ip() -> str:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                return s.getsockname()[0]
+        except (OSError, socket.error):
+            return "127.0.0.1"
+
 # Referência global ao processo filho ativo para limpeza
 active_process: Optional[subprocess.Popen] = None
 
@@ -136,6 +151,7 @@ def render_banner() -> None:
                 f"[bold green]DNS Threat Blocker & SOC Sinkhole Control Center[/bold green]\n"
                 f"[dim white]Host:[/] [cyan]{platform.node()}[/] | "
                 f"[dim white]OS:[/] [cyan]{platform.system()} {platform.release()}[/] | "
+                f"[dim white]Sinkhole IP:[/] [bold yellow]{get_local_ip()}[/bold yellow] | "
                 f"[dim white]Data UTC:[/] [yellow]{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}[/]"
             ),
             border_style="green",
@@ -147,7 +163,7 @@ def render_banner() -> None:
         print(banner_text)
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
         print(f" {ANSI_BOLD}DNS Threat Blocker {ANSI_RESET}")
-        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
+        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
 
 
@@ -163,16 +179,19 @@ def display_menu() -> None:
         table.add_row("[2]", "Sincronizar Feeds de Ameaças", "sudo python3 sync_iocs.py")
         table.add_row("[3]", "Reiniciar Unbound DNS", "sudo systemctl restart unbound")
         table.add_row("[4]", "Iniciar Agente de Machine Learning", "[Módulo IA - Analisador Heurístico]")
-        table.add_row("[5]", "Sair da Consola", "Encerramento seguro do CLI")
+        table.add_row("[5]", f"Atualizar IP do Sinkhole ({get_local_ip()})", "sudo python3 sync_iocs.py --refresh-ip")
+        table.add_row("[6]", "Sair da Consola", "Encerramento seguro do CLI")
 
         rich_console.print(table)
     else:
+        current_ip = get_local_ip()
         print(f" {ANSI_MAGENTA}{ANSI_BOLD}--- MENU DE OPERAÇÕES SECOPS ---{ANSI_RESET}")
         print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar Servidor Web / Dashboard{ANSI_RESET}   {ANSI_GRAY}(sudo ./venv/bin/uvicorn ... :80){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}       {ANSI_GRAY}(sudo python3 sync_iocs.py){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}              {ANSI_GRAY}(sudo systemctl restart unbound){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Iniciar Agente de Machine Learning{ANSI_RESET} {ANSI_YELLOW}[Módulo IA em desenvolvimento]{ANSI_RESET}")
-        print(f"  {ANSI_RED}[5]{ANSI_RESET} {ANSI_BOLD}Sair{ANSI_RESET}\n")
+        print(f"  {ANSI_GREEN}[5]{ANSI_RESET} {ANSI_BOLD}Atualizar IP do Sinkhole{ANSI_RESET}          {ANSI_CYAN}[IP atual: {current_ip}]{ANSI_RESET}")
+        print(f"  {ANSI_RED}[6]{ANSI_RESET} {ANSI_BOLD}Sair{ANSI_RESET}\n")
 
 
 def run_command_interactive(cmd_list: List[str], description: str) -> None:
@@ -267,6 +286,18 @@ def handle_option_4() -> None:
     input(f"{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
 
 
+def handle_option_5() -> None:
+    """Opção 5: Atualizar IP do Sinkhole (--refresh-ip)."""
+    current_ip = get_local_ip()
+    print(f"\n{ANSI_CYAN}{ANSI_BOLD}[▶] IP detetado na rede atual:{ANSI_RESET} {ANSI_GREEN}{current_ip}{ANSI_RESET}")
+    print(f"{ANSI_GRAY}A reescrever o IP no threat_feed.conf e a reiniciar o Unbound...{ANSI_RESET}\n")
+
+    sync_script = PROJECT_DIR / "sync_iocs.py"
+    cmd = ["sudo", "python3", str(sync_script), "--refresh-ip"]
+    run_command_interactive(cmd, "Modo rápido: apenas atualiza o IP sem re-descarregar feeds OSINT.")
+    input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+
+
 def main_loop() -> None:
     """Ciclo principal de execução interativa do CLI."""
     while True:
@@ -277,7 +308,7 @@ def main_loop() -> None:
         choice = ""
         try:
             if HAS_RICH and rich_console:
-                choice = Prompt.ask("[bold green]dtblocker[/bold green][bold white]@[/bold white][bold cyan]secops[/bold cyan] [bold white]❯[/bold white]", choices=["1", "2", "3", "4", "5"], default="1")
+                choice = Prompt.ask("[bold green]dtblocker[/bold green][bold white]@[/bold white][bold cyan]secops[/bold cyan] [bold white]❯[/bold white]", choices=["1", "2", "3", "4", "5", "6"], default="1")
             else:
                 prompt_str = f"{ANSI_GREEN}{ANSI_BOLD}dtblocker{ANSI_RESET}@{ANSI_CYAN}secops{ANSI_RESET} {ANSI_BOLD}❯{ANSI_RESET} "
                 choice = input(prompt_str).strip()
@@ -297,11 +328,13 @@ def main_loop() -> None:
         elif choice == "4":
             handle_option_4()
         elif choice == "5":
+            handle_option_5()
+        elif choice == "6":
             print(f"\n{ANSI_CYAN}{ANSI_BOLD}[✓] A encerrar o DTBlocker Console de forma segura... Até logo!{ANSI_RESET}\n")
             cleanup_processes()
             sys.exit(0)
         else:
-            print(f"\n{ANSI_RED}[!] Opção inválida. Por favor escolhe um número entre 1 e 5.{ANSI_RESET}")
+            print(f"\n{ANSI_RED}[!] Opção inválida. Por favor escolhe um número entre 1 e 6.{ANSI_RESET}")
             time.sleep(1.2)
 
 
