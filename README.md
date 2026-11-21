@@ -42,29 +42,32 @@ python3 console.py
 ```
 
 **Menu de Opções Disponíveis:**
-- **[1] Iniciar Servidor Web / Dashboard:** Arranca o Uvicorn na porta 80 (`sudo ./venv/bin/uvicorn app.main:app --port 80`).
+- **[1] Iniciar Servidor Web:** Arranca o Uvicorn com suporte interativo a **HTTPS (Porta 443 com SSL/TLS)** ou **HTTP (Porta 80)**, com auto-geração de certificados caso estejam em falta.
 - **[2] Sincronizar Feeds de Ameaças:** Executa a ingestão de IoCs (`sudo python3 sync_iocs.py`).
 - **[3] Reiniciar Unbound DNS:** Reinicia o serviço DNS do sistema (`sudo systemctl restart unbound`).
 - **[4] Iniciar Agente de Machine Learning:** Alerta para módulo IA heurístico em desenvolvimento.
-- **[5] Sair:** Encerramento seguro da consola e limpeza de processos.
+- **[5] Atualizar IP do Sinkhole:** Reescreve o IP atual no `threat_feed.conf` e reinicia o Unbound (`sudo python3 sync_iocs.py --refresh-ip`).
+- **[6] Sair:** Encerramento seguro da consola e limpeza de processos.
 
 ---
 
-## 🔒 Geração de Certificados SSL (HTTPS)
+## 🔒 Geração e Gestão Centralizada de Certificados SSL (HTTPS)
 
-Para suportar navegadores modernos com políticas *HTTPS-First* (porta 443), gera o par de chaves e certificado auto-assinado:
+O projeto gere os caminhos SSL/TLS dinamicamente através de `app/config.py` (relativo à raiz do projeto em `certs/` ou configurável via variáveis de ambiente `SSL_KEYFILE` e `SSL_CERTFILE`):
 
 ```bash
+# Geração manual via terminal:
 mkdir -p certs
-
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout certs/sinkhole.key \
   -out certs/sinkhole.crt \
   -subj "/C=PT/ST=SecOps/L=SOC/O=DNS-Threat-Sinkhole/CN=sinkhole.local" \
   -addext "subjectAltName=DNS:*,DNS:sinkhole.local"
-
 chmod 600 certs/sinkhole.key
 chmod 644 certs/sinkhole.crt
+
+# Ou geração automática em 1 clique via console.py (Opção 1) ou run_sinkhole.py:
+sudo python3 run_sinkhole.py --generate-cert
 ```
 
 ---

@@ -25,10 +25,17 @@ from typing import List, Optional
 # Diretório base do projeto (/home/pserver/dnsthreat ou raiz onde está console.py)
 PROJECT_DIR: Path = Path(__file__).resolve().parent
 
-# Importa a função de deteção dinâmica de IP
+# Importa a função de deteção dinâmica de IP e utilitários de SSL/TLS
 sys.path.insert(0, str(PROJECT_DIR))
 try:
-    from app.config import get_local_ip
+    from app.config import (
+        get_local_ip,
+        is_ssl_configured,
+        generate_self_signed_cert,
+        SSL_KEY_PATH,
+        SSL_CERT_PATH,
+        CERTS_DIR
+    )
 except ImportError:
     # Fallback inline caso o import falhe (ex: venv não ativado)
     import socket
@@ -39,6 +46,16 @@ except ImportError:
                 return s.getsockname()[0]
         except (OSError, socket.error):
             return "127.0.0.1"
+
+    CERTS_DIR = PROJECT_DIR / "certs"
+    SSL_KEY_PATH = CERTS_DIR / "sinkhole.key"
+    SSL_CERT_PATH = CERTS_DIR / "sinkhole.crt"
+
+    def is_ssl_configured() -> bool:
+        return SSL_KEY_PATH.is_file() and SSL_CERT_PATH.is_file()
+
+    def generate_self_signed_cert(domain=None, days=365, force=False):
+        return False, "app.config não disponível para geração automática"
 
 # Referência global ao processo filho ativo para limpeza
 active_process: Optional[subprocess.Popen] = None
@@ -144,6 +161,9 @@ def render_banner() -> None:
    
 {ANSI_RESET}"""
 
+    ssl_status_rich = "[bold green]Ativo (:443)[/bold green]" if is_ssl_configured() else "[yellow]Inativo[/yellow]"
+    ssl_status_ansi = f"{ANSI_GREEN}Ativo (:443){ANSI_RESET}" if is_ssl_configured() else f"{ANSI_YELLOW}Inativo{ANSI_RESET}"
+
     if HAS_RICH and rich_console:
         rich_console.print(banner_text)
         info_panel = Panel(
@@ -152,6 +172,7 @@ def render_banner() -> None:
                 f"[dim white]Host:[/] [cyan]{platform.node()}[/] | "
                 f"[dim white]OS:[/] [cyan]{platform.system()} {platform.release()}[/] | "
                 f"[dim white]Sinkhole IP:[/] [bold yellow]{get_local_ip()}[/bold yellow] | "
+                f"[dim white]SSL/TLS:[/] {ssl_status_rich} | "
                 f"[dim white]Data UTC:[/] [yellow]{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}[/]"
             ),
             border_style="green",
@@ -163,19 +184,20 @@ def render_banner() -> None:
         print(banner_text)
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
         print(f" {ANSI_BOLD}DNS Threat Blocker {ANSI_RESET}")
-        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
+        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}SSL/TLS:{ANSI_RESET} {ssl_status_ansi} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
 
 
 def display_menu() -> None:
     """Apresenta o menu de seleção de opções formatado."""
+    ssl_desc = "HTTPS :443" if is_ssl_configured() else "HTTP :80"
     if HAS_RICH and rich_console:
         table = Table(title="[bold white]MENU DE OPERAÇÕES [/bold white]", show_header=True, header_style="bold magenta", border_style="cyan")
         table.add_column("Opção", justify="center", style="bold green", width=8)
         table.add_column("Ação", style="bold white", width=38)
         table.add_column("Comando Associado", style="dim yellow")
 
-        table.add_row("[1]", "Iniciar Servidor Web / Dashboard", "sudo ./venv/bin/uvicorn app.main:app --port 80")
+        table.add_row("[1]", f"Iniciar Servidor Web ({ssl_desc})", f"sudo ./venv/bin/uvicorn app.main:app ({ssl_desc})")
         table.add_row("[2]", "Sincronizar Feeds de Ameaças", "sudo python3 sync_iocs.py")
         table.add_row("[3]", "Reiniciar Unbound DNS", "sudo systemctl restart unbound")
         table.add_row("[4]", "Iniciar Agente de Machine Learning", "[Módulo IA - Analisador Heurístico]")
@@ -186,7 +208,7 @@ def display_menu() -> None:
     else:
         current_ip = get_local_ip()
         print(f" {ANSI_MAGENTA}{ANSI_BOLD}--- MENU DE OPERAÇÕES SECOPS ---{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar Servidor Web / Dashboard{ANSI_RESET}   {ANSI_GRAY}(sudo ./venv/bin/uvicorn ... :80){ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar Servidor Web ({ssl_desc}){ANSI_RESET}   {ANSI_GRAY}(sudo ./venv/bin/uvicorn ... {ssl_desc}){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}       {ANSI_GRAY}(sudo python3 sync_iocs.py){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}              {ANSI_GRAY}(sudo systemctl restart unbound){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Iniciar Agente de Machine Learning{ANSI_RESET} {ANSI_YELLOW}[Módulo IA em desenvolvimento]{ANSI_RESET}")
@@ -240,14 +262,62 @@ def resolve_uvicorn_path() -> str:
 
 
 def handle_option_1() -> None:
-    """Opção 1: Iniciar o Servidor Web / Dashboard (Porta 80)."""
+    """Opção 1: Iniciar o Servidor Web / Dashboard (com suporte dinâmico a HTTPS :443 e HTTP :80)."""
     uvicorn_bin = resolve_uvicorn_path()
-    cmd = [
-        "sudo", uvicorn_bin, "app.main:app",
-        "--host", "0.0.0.0",
-        "--port", "80"
-    ]
-    run_command_interactive(cmd, "Para parar o servidor e voltar ao menu, prime Ctrl+C.")
+    ssl_ready = is_ssl_configured()
+
+    print(f"\n{ANSI_CYAN}{ANSI_BOLD}--- SELEÇÃO DE MODO DO SERVIDOR WEB ---{ANSI_RESET}")
+    if ssl_ready:
+        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}HTTPS (Porta 443 - Recomendado para navegadores HTTPS-First){ANSI_RESET} {ANSI_CYAN}[Certificados OK]{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}HTTP (Porta 80 - Modo Legado){ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Regenerar Certificados SSL/TLS Auto-assinados{ANSI_RESET}")
+        print(f"  {ANSI_GRAY}[0] Voltar ao menu principal{ANSI_RESET}")
+        sub_choice = input(f"\n{ANSI_BOLD}Escolha o modo [padrão: 1]: {ANSI_RESET}").strip() or "1"
+    else:
+        print(f"  {ANSI_YELLOW}[!] Certificados SSL/TLS não encontrados em {CERTS_DIR}.{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Gerar Certificado SSL Auto-assinado e Iniciar em HTTPS (:443){ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Iniciar apenas em HTTP (Porta 80){ANSI_RESET}")
+        print(f"  {ANSI_GRAY}[0] Voltar ao menu principal{ANSI_RESET}")
+        sub_choice = input(f"\n{ANSI_BOLD}Escolha o modo [padrão: 1]: {ANSI_RESET}").strip() or "1"
+        if sub_choice == "1":
+            print(f"\n{ANSI_CYAN}[▶] A gerar certificados SSL/TLS auto-assinados...{ANSI_RESET}")
+            ok, msg = generate_self_signed_cert()
+            if ok:
+                print(f"{ANSI_GREEN}[✓] {msg}{ANSI_RESET}")
+                ssl_ready = True
+            else:
+                print(f"{ANSI_RED}[✗] {msg}{ANSI_RESET}")
+                input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+                return
+
+    if sub_choice == "0":
+        return
+    elif sub_choice == "3" and ssl_ready:
+        print(f"\n{ANSI_CYAN}[▶] A regenerar certificados SSL/TLS para o IP {get_local_ip()}...{ANSI_RESET}")
+        ok, msg = generate_self_signed_cert(force=True)
+        if ok:
+            print(f"{ANSI_GREEN}[✓] {msg}{ANSI_RESET}")
+        else:
+            print(f"{ANSI_RED}[✗] {msg}{ANSI_RESET}")
+        input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+        return
+    elif sub_choice == "1" and ssl_ready:
+        cmd = [
+            "sudo", uvicorn_bin, "app.main:app",
+            "--host", "0.0.0.0",
+            "--port", "443",
+            "--ssl-keyfile", str(SSL_KEY_PATH),
+            "--ssl-certfile", str(SSL_CERT_PATH)
+        ]
+        run_command_interactive(cmd, "Servidor HTTPS ativo na porta 443 com TLS. Prime Ctrl+C para parar.")
+    else:
+        cmd = [
+            "sudo", uvicorn_bin, "app.main:app",
+            "--host", "0.0.0.0",
+            "--port", "80"
+        ]
+        run_command_interactive(cmd, "Servidor HTTP ativo na porta 80. Prime Ctrl+C para parar.")
+
     input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
 
 
