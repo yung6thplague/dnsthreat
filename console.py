@@ -3,11 +3,12 @@
 console.py — DTBlocker Interactive Security Operations CLI
 
 Ponto de entrada de linha de comandos (CLI) para gestão centralizada do DNS Sinkhole:
-1. Iniciar o Servidor Web / Dashboard (FastAPI/Uvicorn)
+1. Iniciar Servidor Web / Dashboard (FastAPI/Uvicorn em HTTP ou HTTPS)
 2. Sincronizar Feeds de Ameaças (Threat Intelligence Ingestion)
-3. Reiniciar Unbound DNS (systemctl)
-4. Iniciar Agente de Machine Learning (Módulo IA em desenvolvimento)
-5. Sair com encerramento gracioso e limpeza de processos
+3. Reiniciar Unbound DNS (validação sintática e recarregamento)
+4. Agente de Machine Learning / Extractor (análise e classificação de DGA)
+5. Atualizar IP do Sinkhole (deteção dinâmica e reescrita de regras Unbound)
+6. Sair da Consola (encerramento limpo de processos filhos)
 """
 
 import atexit

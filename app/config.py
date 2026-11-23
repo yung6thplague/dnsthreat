@@ -62,6 +62,26 @@ def get_local_ip() -> str:
         return "127.0.0.1"
 
 
+def get_local_ipv6() -> Optional[str]:
+    """Deteta dinamicamente o endereço IPv6 global/ULA da interface ativa.
+
+    Utiliza um socket UDP connectionless apontado para 2001:4860:4860::8888.
+    Descarta loopback (::1) e endereços link-local não roteáveis (fe80::/10).
+
+    Returns:
+        Endereço IPv6 global ou None se a interface não tiver conectividade IPv6.
+    """
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
+            s.connect(("2001:4860:4860::8888", 80))
+            ip = s.getsockname()[0]
+            if ip.startswith("fe80:") or ip == "::1":
+                return None
+            return ip
+    except (OSError, socket.error):
+        return None
+
+
 def is_ssl_configured() -> bool:
     """Verifica se os ficheiros de chave privada e certificado SSL/TLS existem e são válidos."""
     try:

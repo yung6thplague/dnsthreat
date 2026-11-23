@@ -1,160 +1,110 @@
-# DNS Threat Blocker & Sinkhole Telemetry
+# dtblocker — DNS Threat Blocker & Sinkhole
 
-Solução integrada de **DNS Sinkhole** e **Threat Intelligence **, desenvolvida com **FastAPI**, **Unbound DNS** e **SQLite (WAL mode)** para intercetar tráfego malicioso na rede interna e fornecer telemetria em tempo real para analistas de SOC.
+Solução integrada de **DNS Sinkhole**, **Threat Intelligence** e **Deteção de DGAs via Machine Learning**, concebida para intercetar tráfego malicioso em redes locais e fornecer telemetria em tempo real para analistas de segurança (SOC).
 
----
+O sistema combina a resolução recursiva do **Unbound DNS** com uma camada web em **FastAPI** e base de dados **SQLite em modo WAL** (*Write-Ahead Logging*). Consultas DNS para domínios maliciosos conhecidos ou gerados por algoritmos são redirecionadas para o IP da VM, apresentando uma página de bloqueio ao utilizador e registando auditoria detalhada no dashboard `/admin`.
 
-## 📋 Pré-requisitos
-
-- **Sistema Operacional:** Linux (Ubuntu/Debian recomendado para Unbound) ou compatível
-- **Python:** 3.9+
-- **Serviços:** `unbound` (opcional em ambiente local de desenvolvimento, obrigatório em produção)
-- **Ferramentas:** `openssl`, `git`
+O sistema combina a resolução recursiva do **Unbound DNS** com uma camada web em **FastAPI** e base de dados **SQLite em modo WAL**  Consultas DNS para domínios maliciosos conhecidos ou gerados por algoritmos são redirecionadas para o IP da VM, apresentando uma página de bloqueio ao utilizador e registando auditoria detalhada no dashboard `/admin`.
 
 ---
 
-## 🚀 Instalação e Preparação
+## 🚀 Instalação Rápida
 
-### 1. Clonar o repositório e aceder à pasta do projeto
+### Pré-requisitos
+- **SO:** Linux (Ubuntu 22.04 / 24.04 recomendado)
+- **Python:** 3.9 ou superior
+- **Serviços:** `unbound` (`sudo apt install unbound`)
+
+### Passos de Instalação
+
 ```bash
+# 1. Aceder à diretoria do projeto
 cd /home/pserver/dnsthreat
-```
 
-### 2. Criar e ativar o ambiente virtual (venv)
-```bash
+# 2. Criar e ativar o ambiente virtual
 python3 -m venv venv
 source venv/bin/activate
-```
 
-### 3. Instalar as dependências
-```bash
+# 3. Instalar dependências
 pip install -r requirements.txt
 ```
 
 ---
 
-## 💻 Consola Interativa de Gestão (CLI)
+## 💻 Como Usar a Ferramenta via Consola
 
-O projeto dispõe de uma consola interativa centralizada (`console.py`) com banner ASCII hacker e menu SecOps para gerir todas as operações num único ponto:
+Toda a gestão operacional é feita através do menu interativo `console.py`:
 
 ```bash
 python3 console.py
 ```
 
-**Menu de Opções Disponíveis:**
-- **[1] Iniciar Servidor Web:** Arranca o Uvicorn com suporte interativo a **HTTPS (Porta 443 com SSL/TLS)** ou **HTTP (Porta 80)**, com auto-geração de certificados caso estejam em falta.
-- **[2] Sincronizar Feeds de Ameaças:** Executa a ingestão de IoCs (`sudo python3 sync_iocs.py`).
-- **[3] Reiniciar Unbound DNS:** Reinicia o serviço DNS do sistema (`sudo systemctl restart unbound`).
-- **[4] Iniciar Agente de Machine Learning:** Alerta para módulo IA heurístico em desenvolvimento.
-- **[5] Atualizar IP do Sinkhole:** Reescreve o IP atual no `threat_feed.conf` e reinicia o Unbound (`sudo python3 sync_iocs.py --refresh-ip`).
-- **[6] Sair:** Encerramento seguro da consola e limpeza de processos.
+```text
+▀▀▀▀██▄ ███     ███     ███                     ███                    
+███ ███ ███     ███     ███                     ███                    
+███ ███ ███▄▄   ███     ███                     ███                    
+███ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄
+███ ███ ███     ███ ███ ███     ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
+███ ███ ███     ███ ███ ███     ███ ███ ███ ▀▀▀ ███▀██▄ ███▀▀▀▀ ███    
+███ ███ ███ ▄▄▄ ███ ███ ███ ▄▄▄ ███ ███ ███ ███ ███ ███ ███ ███ ███    
+███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███    
+███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    
+
+╭────────────────────── ● DEFENSE ENGINE ACTIVE ● ──────────────────────╮
+│ Host: pserver | Sinkhole IP: 192.168.1.102 | Data UTC: 2026-11-23 ... │
+╰───────────────────────────────────────────────────────────────────────╯
+
+                           MENU DE OPERAÇÕES                             
+┌───────────┬───────────────────────────────────────────────────────────┐
+│   Opção   │ Ação                                                      │
+├───────────┼───────────────────────────────────────────────────────────┤
+│    [1]    │ Iniciar servidor                                          │
+│    [2]    │ Sincronizar Feeds de Ameaças                              │
+│    [3]    │ Reiniciar Unbound DNS                                     │
+│    [5]    │ Atualizar IP do Sinkhole                                  │
+│    [6]    │ Sair da Consola                                           │
+└───────────┴───────────────────────────────────────────────────────────┘
+```
+
+### Descrição das Opções
+
+- **[1] Iniciar servidor:**
+  Inicia a aplicação FastAPI via Uvicorn nas portas privilegiadas. Permite escolher entre:
+  - **HTTPS (Porta 443):** Modo recomendado com suporte TLS (gera certificados autoassinados em `certs/` se não existirem).
+  - **HTTP (Porta 80):** Modo de compatibilidade legado.
+  - Aceder ao painel SOC: `http://<IP_DA_VM>/admin` ou `https://<IP_DA_VM>/admin`.
+
+- **[2] Sincronizar Feeds de Ameaças:**
+  Executa `sync_iocs.py` com privilégios `sudo`. Descarrega feeds públicos de Threat Intelligence (URLhaus, ThreatFox, AlienVault OTX, Feodo Tracker), normaliza os domínios, remove entradas da allowlist, atualiza a base SQLite e recarrega o Unbound.
+
+- **[3] Reiniciar Unbound DNS:**
+  Executa `sudo systemctl restart unbound` após validação sintática das regras (`unbound-checkconf`).
+
+- **[4] Agente de Machine Learning / Extractor:**
+  Módulo de triagem e inteligência artificial para análise de indicadores:
+  1. *Analisar Texto / Indicadores:* Extrai domínios de relatórios desarmados (ex: `hxxps://evil[.]top`), filtra falsos positivos pela allowlist e calcula o score de risco DGA.
+  2. *Processar Ficheiro:* Processa ficheiros de logs ou listas de domínios em lote.
+  3. *Classificar Domínio Único:* Calcula a entropia de Shannon (bits), proporção de consoantes, padrões hexadecimais e emite veredito (`BENIGN`, `SUSPICIOUS`, `HIGH_RISK_DGA`).
+  4. *Ver Allowlist:* Lista os domínios confiáveis carregados em memória (`data/allowlist.txt`).
+
+- **[5] Atualizar IP do Sinkhole:**
+  Modo rápido (`sync_iocs.py --refresh-ip`). Deteta dinamicamente o novo endereço IP da interface ativa (útil após troca de rede Wi-Fi/Ethernet), reescreve as entradas A e AAAA no Unbound e recarrega o serviço sem precisar de re-descarregar os feeds.
+
+- **[6] Sair da Consola:**
+  Encerra subprocessos ativos em segurança e liberta portas e recursos do sistema.
 
 ---
 
-## 🔒 Geração e Gestão Centralizada de Certificados SSL (HTTPS)
+## 📖 Documentação Detalhada
 
-O projeto gere os caminhos SSL/TLS dinamicamente através de `app/config.py` (relativo à raiz do projeto em `certs/` ou configurável via variáveis de ambiente `SSL_KEYFILE` e `SSL_CERTFILE`):
-
-```bash
-# Geração manual via terminal:
-mkdir -p certs
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout certs/sinkhole.key \
-  -out certs/sinkhole.crt \
-  -subj "/C=PT/ST=SecOps/L=SOC/O=DNS-Threat-Sinkhole/CN=sinkhole.local" \
-  -addext "subjectAltName=DNS:*,DNS:sinkhole.local"
-chmod 600 certs/sinkhole.key
-chmod 644 certs/sinkhole.crt
-
-# Ou geração automática em 1 clique via console.py (Opção 1) ou run_sinkhole.py:
-sudo python3 run_sinkhole.py --generate-cert
-```
+Para uma visão aprofundada da arquitetura de rede, engenharia do classificador ML, esquemas de bases de dados SQLite e procedimentos de resposta a incidentes, consulta o documento:
+👉 **[DOCUMENTATION.md](DOCUMENTATION.md)**
 
 ---
 
-## ⚙️ Sincronização de Threat Intelligence (IoCs)
-
-O script `sync_iocs.py` descarrega feeds abertos de segurança (URLhaus, ThreatFox, AlienVault OTX, Feodo Tracker, etc.), popula a base de dados SQLite e gera o ficheiro de configuração do Unbound (`threat_feed.conf`).
+## 🧪 Execução de Testes Automatizados
 
 ```bash
-# Execução padrão (descarrega IoCs, atualiza a BD e gera a config do Unbound)
-sudo python3 sync_iocs.py
-
-# Modo de simulação (não grava na BD nem altera o Unbound)
-sudo python3 sync_iocs.py --dry-run
-
-# Modo verboso para depuração
-sudo python3 sync_iocs.py --verbose
-```
-
----
-
-## 🌐 Como Executar o Servidor Web (FastAPI / Uvicorn)
-
-### Opção 1: Ambiente de Produção / Sinkhole Real (Portas Privilegiadas)
-
-Como as portas `80` e `443` são privilégios de sistema no Linux, executa com `sudo` apontando para o binário do ambiente virtual:
-
-#### Em HTTP (Porta 80):
-```bash
-sudo ./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 80
-```
-
-#### Em HTTPS (Porta 443 com SSL):
-```bash
-sudo ./venv/bin/uvicorn app.main:app \
-  --host 0.0.0.0 \
-  --port 443 \
-  --ssl-keyfile certs/sinkhole.key \
-  --ssl-certfile certs/sinkhole.crt
-```
-
----
-
-### Opção 2: Ambiente de Desenvolvimento Local (Porta 8000, sem root)
-
-Ideal para testar o painel administrativo, templates e rotas sem necessidade de privilégios de administrador:
-
-```bash
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
----
-
-## 🧪 Executar os Testes Automatizados
-
-Para rodar a suite completa de testes de unidade e integração:
-
-```bash
-pytest
-```
-
----
-
-## 📍 Endpoints e Acessos
-
-| Endpoint | Descrição |
-| :--- | :--- |
-| `http://<IP-SINKHOLE>/admin` | **SOC Telemetry Dashboard** (métricas de bloqueios, Top 5 IoCs e logs de auditoria). |
-| `http://<IP-SINKHOLE>/api/stats` | **API JSON** com estatísticas em tempo real para automações e SIEM. |
-| `http://<IP-SINKHOLE>/health` | Endpoint de verificação de integridade (*Health Check*). |
-| `http://<IP-SINKHOLE>/*` | **Catch-All Sinkhole**: Qualquer rota/domínio intercetado apresenta a página de alerta `user_blocked.html` e grava o incidente. |
-
----
-
-## 🔍 Como Testar o Sinkhole
-
-### 1. Testar resolução DNS com Unbound ativo:
-```bash
-nslookup phish-banking-login.top 127.0.0.1
-# Deve devolver o IP do Sinkhole (ex: 10.0.2.15)
-```
-
-### 2. Testar captura web simulando o cabeçalho `Host`:
-```bash
-# Teste via HTTP:
-curl -H "Host: malicious-stealer.xyz" http://127.0.0.1:8000/login.php
-
-# Teste via HTTPS:
-curl -k -H "Host: malicious-stealer.xyz" https://127.0.0.1:443/payload.exe
+# Executar todos os testes com pytest
+pytest tests/ -v
 ```
