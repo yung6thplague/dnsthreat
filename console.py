@@ -143,24 +143,22 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def render_banner() -> None:
-    """Renderiza o banner ASCII de dtblocker em verde proporcional."""
+    """Renderiza o banner ASCII solido de dtblocker em verde proporcional."""
     clear_screen()
 
     banner_text = """
-▀▀▀▀██▄ ░░░     ░░░     ░░░                     ░░░                    
-░░░ ███ ▒▒▒     ▒▒▒     ▒▒▒                     ▒▒▒                    
-▒▒▒ ███ ▓▓▓▄▄   ▓▓▓     ▓▓▓                     ▓▓▓                    
-▓▓▓ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄
+▀▀▀▀██▄ ███     ███     ███                     ███                    
+███ ███ ███     ███     ███                     ███                    
+███ ███ ███▄▄   ███     ███                     ███                    
+███ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄
 ███ ███ ███     ███ ███ ███     ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
 ███ ███ ███     ███ ███ ███     ███ ███ ███ ▀▀▀ ███▀██▄ ███▀▀▀▀ ███    
 ███ ███ ███ ▄▄▄ ███ ███ ███ ▄▄▄ ███ ███ ███ ███ ███ ███ ███ ███ ███    
 ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███    
-███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    
-          ▀█    █▀        ▀█      █▀      █▀        █▀    █▀     ▀█    
-           ▄    ▄          ▄      ▄       ▄         ▄     ▄       ▄    """
+███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    """
 
     if HAS_RICH and rich_console:
-        # Banner em verde e caixa proporcional de largura 73 (alinhada ao banner) em vermelho
+        # Banner totalmente solido em verde e caixa proporcional de largura 73 em vermelho
         rich_console.print(f"[bold green]{banner_text}[/bold green]")
         info_panel = Panel(
             Text.from_markup(
@@ -188,8 +186,8 @@ def display_menu() -> None:
         table = Table(
             title="[bold red]MENU DE OPERAÇÕES[/bold red]",
             show_header=True,
-            header_style="bold magenta",
-            border_style="cyan",
+            header_style="bold red",
+            border_style="green",
             width=73
         )
         table.add_column("Opção", justify="center", style="bold green", width=9)
@@ -205,12 +203,16 @@ def display_menu() -> None:
         rich_console.print(table)
     else:
         print(f" {ANSI_RED}{ANSI_BOLD}--- MENU DE OPERAÇÕES ---{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar servidor{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Agente de Machine Learning / Extractor{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[5]{ANSI_RESET} {ANSI_BOLD}Atualizar IP do Sinkhole{ANSI_RESET}")
-        print(f"  {ANSI_RED}[6]{ANSI_RESET} {ANSI_BOLD}Sair{ANSI_RESET}\n")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}┌───────────┬───────────────────────────────────────────────────────────┐{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}   {ANSI_RED}{ANSI_BOLD}Opção{ANSI_RESET}   {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} {ANSI_RED}{ANSI_BOLD}Ação{ANSI_RESET}                                                      {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}├───────────┼───────────────────────────────────────────────────────────┤{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_GREEN}[1]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Iniciar servidor                                          {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_GREEN}[2]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Sincronizar Feeds de Ameaças                              {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_GREEN}[3]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Reiniciar Unbound DNS                                     {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_GREEN}[4]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Agente de Machine Learning / Extractor                    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_GREEN}[5]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Atualizar IP do Sinkhole                                  {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}    {ANSI_RED}[6]{ANSI_RESET}    {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET} Sair da Consola                                           {ANSI_GREEN}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}└───────────┴───────────────────────────────────────────────────────────┘{ANSI_RESET}\n")
 
 def run_command_interactive(cmd_list: List[str], description: str) -> None:
     """
