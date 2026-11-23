@@ -77,3 +77,51 @@ def test_api_stats():
         assert "recent_logs" in data
         assert isinstance(data["top_domains"], list)
         assert isinstance(data["recent_logs"], list)
+
+
+def test_unblock_ioc_endpoint():
+    """Test the IoC unblock and rollback endpoint."""
+    with TestClient(app) as client:
+        # First ensure an IoC is present
+        from app.database import add_ioc_entry
+        add_ioc_entry("false-positive-domain.com", category="Test")
+
+        # Call unblock
+        payload = {"domain": "false-positive-domain.com", "add_to_allowlist": True}
+        response = client.post("/api/ioc/unblock", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["domain"] == "false-positive-domain.com"
+        assert data["deleted_count"] >= 1
+
+
+def test_list_iocs_endpoint():
+    """Test the IoC listing endpoint with search filter."""
+    with TestClient(app) as client:
+        response = client.get("/api/iocs?limit=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert "total" in data
+        assert "iocs" in data
+        assert isinstance(data["iocs"], list)
+
+
+def test_ml_analyze_endpoint():
+    """Test the ML domain analysis endpoint for DGA detection."""
+    with TestClient(app) as client:
+        # 1. Benign domain
+        res_benign = client.post("/api/ml/analyze", json={"domain": "google.com"})
+        assert res_benign.status_code == 200
+        data_benign = res_benign.json()
+        assert data_benign["verdict"] == "BENIGN"
+        assert data_benign["risk_score"] < 0.40
+
+        # 2. DGA random string domain
+        res_dga = client.post("/api/ml/analyze", json={"domain": "xzkfplwq987123jfk.xyz"})
+        assert res_dga.status_code == 200
+        data_dga = res_dga.json()
+        assert data_dga["verdict"] in {"HIGH_RISK_DGA", "SUSPICIOUS"}
+        assert data_dga["risk_score"] >= 0.40
+        assert len(data_dga["signals"]) > 0
+

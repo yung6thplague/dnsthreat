@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and tests
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Archives and temporary files
+*.zip
+*.tar.gz
+*.swp
+*~

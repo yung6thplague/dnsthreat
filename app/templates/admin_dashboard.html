@@ -355,6 +355,91 @@
 
     </section>
 
+    <!-- SOC Operations: Quick Unblock & ML Analysis Section -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Card 1: Fast IoC Rollback / Unblock -->
+      <div class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-6 shadow-xl transition">
+        <div class="flex items-center space-x-2 mb-4">
+          <div class="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Desbloqueio / Rollback Rápido de IoC</h2>
+            <p class="text-xs text-slate-400">Remoção de falsos positivos da base ativa e inserção na Allowlist</p>
+          </div>
+        </div>
+
+        <form onsubmit="handleManualUnblock(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1.5">FQDN / Domínio a Desbloquear</label>
+            <div class="relative">
+              <input type="text" id="unblock-domain-input" placeholder="ex: benign-service.corp.local" required
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500 transition" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center space-x-2 text-xs text-slate-400 cursor-pointer">
+              <input type="checkbox" id="unblock-allowlist-check" checked
+                class="rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-amber-500/30" />
+              <span>Adicionar a <code class="text-slate-300 font-mono">data/allowlist.txt</code></span>
+            </label>
+            <button type="submit" id="btn-unblock-submit"
+              class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold transition cursor-pointer">
+              <span>Desbloquear IoC</span>
+            </button>
+          </div>
+          <div id="unblock-status-msg" class="text-xs hidden font-medium"></div>
+        </form>
+      </div>
+
+      <!-- Card 2: ML DGA & Threat Classifier -->
+      <div class="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 rounded-2xl p-6 shadow-xl transition">
+        <div class="flex items-center space-x-2 mb-4">
+          <div class="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Triagem Heurística & Classificador ML (DGA)</h2>
+            <p class="text-xs text-slate-400">Cálculo de entropia de Shannon, proporção de consoantes e deteção de anomalias</p>
+          </div>
+        </div>
+
+        <form onsubmit="handleMLAnalyze(event)" class="space-y-3">
+          <div class="flex space-x-2">
+            <input type="text" id="ml-domain-input" placeholder="ex: xzkfplwq987123jfk.xyz" required
+              class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500 transition" />
+            <button type="submit" id="btn-ml-submit"
+              class="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold transition cursor-pointer">
+              Analisar
+            </button>
+          </div>
+
+          <!-- ML Live Result Display Container -->
+          <div id="ml-result-box" class="hidden mt-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-400">Veredito: <strong id="ml-verdict" class="font-mono"></strong></span>
+              <span class="text-slate-400">Score de Risco: <strong id="ml-score" class="font-mono text-cyan-300"></strong></span>
+            </div>
+            <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div id="ml-risk-bar" class="h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div class="pt-1 text-[11px] text-slate-400">
+              <span class="font-medium text-slate-300 block mb-1">Sinais Explicativos Detetados:</span>
+              <ul id="ml-signals-list" class="space-y-1 pl-3 list-disc text-slate-300 font-mono"></ul>
+            </div>
+          </div>
+        </form>
+      </div>
+
+    </section>
+
     <!-- Audit Logs Section (Last 10 Records) -->
     <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -420,11 +505,20 @@
               <td class="py-3.5 px-4 max-w-xs truncate text-slate-400" title="{{ log.user_agent }}">
                 {{ log.user_agent }}
               </td>
-              <td class="py-3.5 px-4 text-right">
+              <td class="py-3.5 px-4 text-right whitespace-nowrap">
                 <span
                   class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
                   SINKHOLED
                 </span>
+                <button onclick="unblockDomain('{{ log.domain_requested }}')"
+                  class="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-[11px] font-semibold transition ml-2 cursor-pointer shadow-sm"
+                  title="Desbloquear IoC e adicionar à Allowlist permanente">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  </svg>
+                  <span>Desbloquear</span>
+                </button>
               </td>
             </tr>
             {% endfor %}
@@ -547,10 +641,19 @@
                 <td class="py-3.5 px-4 max-w-xs truncate text-slate-400" title="${escapeHtml(log.user_agent || '')}">
                   ${escapeHtml(log.user_agent || 'Unknown')}
                 </td>
-                <td class="py-3.5 px-4 text-right">
+                <td class="py-3.5 px-4 text-right whitespace-nowrap">
                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
                     SINKHOLED
                   </span>
+                  <button onclick="unblockDomain('${escapeHtml(log.domain_requested)}')"
+                    class="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-[11px] font-semibold transition ml-2 cursor-pointer shadow-sm"
+                    title="Desbloquear IoC e adicionar à Allowlist permanente">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                    </svg>
+                    <span>Desbloquear</span>
+                  </button>
                 </td>
               </tr>
             `).join('');
@@ -596,7 +699,139 @@
       downloadLink.click();
       document.body.removeChild(downloadLink);
     }
+    // Toast notifications
+    function showToast(message, isSuccess = true) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto flex items-center space-x-2 px-4 py-3 rounded-xl border text-xs shadow-2xl transition duration-300 transform translate-y-2 opacity-0 ${
+        isSuccess 
+          ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200' 
+          : 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+      }`;
+      toast.innerHTML = `
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          ${isSuccess 
+            ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>' 
+            : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'}
+        </svg>
+        <span class="font-medium">${escapeHtml(message)}</span>
+      `;
+      container.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 400);
+      }, 4000);
+    }
+
+    // Unblock IoC domain via API
+    async function unblockDomain(domain) {
+      if (!domain) return;
+      if (!confirm(`Confirmas o desbloqueio do domínio ${domain}?\n\nEle será removido da base de ameaças ativas e adicionado à allowlist permanente.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/ioc/unblock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain, add_to_allowlist: true })
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+          showToast(`Domínio ${domain} desbloqueado com sucesso!`, true);
+          await refreshDashboard();
+        } else {
+          showToast(`Erro ao desbloquear: ${result.detail || result.error || 'Falha inesperada'}`, false);
+        }
+      } catch (err) {
+        showToast(`Erro de comunicação com a API: ${err.message}`, false);
+      }
+    }
+
+    // Handle Manual Unblock Form Submission
+    async function handleManualUnblock(event) {
+      event.preventDefault();
+      const input = document.getElementById('unblock-domain-input');
+      const allowlistCheck = document.getElementById('unblock-allowlist-check');
+      const domain = input.value.trim();
+      if (!domain) return;
+
+      try {
+        const response = await fetch('/api/ioc/unblock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain, add_to_allowlist: allowlistCheck.checked })
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+          showToast(`Domínio ${domain} desbloqueado e adicionado à allowlist!`, true);
+          input.value = '';
+          await refreshDashboard();
+        } else {
+          showToast(`Erro ao desbloquear: ${result.detail || result.error || 'Erro'}`, false);
+        }
+      } catch (err) {
+        showToast(`Erro de rede: ${err.message}`, false);
+      }
+    }
+
+    // Handle ML Analysis Form Submission
+    async function handleMLAnalyze(event) {
+      event.preventDefault();
+      const input = document.getElementById('ml-domain-input');
+      const domain = input.value.trim();
+      if (!domain) return;
+
+      const resultBox = document.getElementById('ml-result-box');
+      const verdictEl = document.getElementById('ml-verdict');
+      const scoreEl = document.getElementById('ml-score');
+      const riskBar = document.getElementById('ml-risk-bar');
+      const signalsList = document.getElementById('ml-signals-list');
+
+      try {
+        const response = await fetch('/api/ml/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: domain })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          resultBox.classList.remove('hidden');
+          const percent = Math.round(data.risk_score * 100);
+          scoreEl.innerText = `${percent}% (Confiança: ${Math.round(data.confidence * 100)}%)`;
+          
+          let verdictColor = 'text-emerald-400';
+          let barGradient = 'from-emerald-500 to-teal-500';
+          if (data.verdict === 'HIGH_RISK_DGA') {
+            verdictColor = 'text-rose-400';
+            barGradient = 'from-rose-500 to-amber-500';
+          } else if (data.verdict === 'SUSPICIOUS') {
+            verdictColor = 'text-amber-400';
+            barGradient = 'from-amber-500 to-yellow-500';
+          }
+
+          verdictEl.className = `font-mono ${verdictColor}`;
+          verdictEl.innerText = data.verdict;
+
+          riskBar.className = `h-1.5 rounded-full transition-all duration-500 bg-gradient-to-r ${barGradient}`;
+          riskBar.style.width = `${percent}%`;
+
+          signalsList.innerHTML = (data.signals || []).map(s => `<li>${escapeHtml(s)}</li>`).join('');
+          showToast(`Análise ML concluída para ${domain}`, true);
+        } else {
+          showToast(`Falha na análise: ${data.detail || 'Erro desconhecido'}`, false);
+        }
+      } catch (err) {
+        showToast(`Erro ao contactar classificador ML: ${err.message}`, false);
+      }
+    }
   </script>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 </body>
 
 </html>

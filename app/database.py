@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
-from app.config import DATABASE_PATH
+from app.config import ALLOWLIST_PATH, DATABASE_PATH
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -177,3 +177,97 @@ def get_admin_metrics() -> Dict[str, Any]:
             "top_domains": top_domains,
             "recent_logs": recent_logs,
         }
+
+
+def unblock_ioc(domain: str, add_to_allowlist: bool = True) -> Dict[str, Any]:
+    """Unblocks an IoC domain (Rollback mechanism for False Positives).
+
+    Operations:
+    1. Removes domain from the active `ioc_entries` table in SQLite.
+    2. Appends the domain to `data/allowlist.txt` to prevent automated re-ingestion
+       by threat feeds during subsequent sync cycles.
+    3. Returns operation details and count of affected records.
+    """
+    clean_domain = domain.strip().lower().rstrip(".")
+    if not clean_domain:
+        return {"success": False, "domain": domain, "error": "Domínio inválido ou vazio."}
+
+    deleted_count = 0
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ioc_entries WHERE domain = ?;", (clean_domain,))
+        deleted_count = cursor.rowcount
+
+    added_to_allowlist = False
+    if add_to_allowlist:
+        try:
+            # Ensure allowlist file exists
+            if not ALLOWLIST_PATH.exists():
+                ALLOWLIST_PATH.touch()
+
+            existing_lines = ALLOWLIST_PATH.read_text(encoding="utf-8", errors="ignore").splitlines()
+            cleaned_existing = {line.strip().lower() for line in existing_lines if line.strip() and not line.startswith("#")}
+
+            if clean_domain not in cleaned_existing:
+                with ALLOWLIST_PATH.open("a", encoding="utf-8") as f:
+                    f.write(f"{clean_domain}  # Desbloqueado via SOC Console/Dashboard\n")
+                added_to_allowlist = True
+        except Exception as e:
+            # Non-blocking error for allowlist file write
+            pass
+
+    return {
+        "success": True,
+        "domain": clean_domain,
+        "deleted_count": deleted_count,
+        "added_to_allowlist": added_to_allowlist,
+        "message": f"Domínio '{clean_domain}' desbloqueado com sucesso."
+    }
+
+
+def get_ioc_entries(limit: int = 50, offset: int = 0, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieves paginated and filtered list of active IoC threat entries."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if search and search.strip():
+            query_str = f"%{search.strip().lower()}%"
+            cursor.execute(
+                """
+                SELECT domain, status, category, created_at
+                FROM ioc_entries
+                WHERE domain LIKE ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?;
+                """,
+                (query_str, limit, offset)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT domain, status, category, created_at
+                FROM ioc_entries
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?;
+                """,
+                (limit, offset)
+            )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def add_ioc_entry(domain: str, category: str = "Manual / SOC") -> bool:
+    """Manually registers an IoC into the database."""
+    clean_domain = domain.strip().lower().rstrip(".")
+    if not clean_domain:
+        return False
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO ioc_entries (domain, status, category)
+            VALUES (?, 'blocked', ?);
+            """,
+            (clean_domain, category)
+        )
+        return cursor.rowcount > 0
+

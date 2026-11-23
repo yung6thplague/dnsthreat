@@ -22,8 +22,9 @@ DATA_DIR: Path = BASE_DIR / "data"
 # Guarantee data directory exists (dynamically generated if missing)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Database file path
+# Database and allowlist file paths
 DATABASE_PATH: Path = DATA_DIR / "telemetry.db"
+ALLOWLIST_PATH: Path = DATA_DIR / "allowlist.txt"
 
 # -----------------------------------------------------------------------------
 # SSL / TLS Centralized Configuration

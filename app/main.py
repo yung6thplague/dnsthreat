@@ -8,13 +8,21 @@ FastAPI entrypoint handling:
 """
 
 from contextlib import asynccontextmanager
-from typing import Optional
-from fastapi import FastAPI, Request
+from typing import Any, Dict, Optional
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from agent.classifier import DomainClassifier
 from app.config import APP_DESCRIPTION, APP_TITLE, APP_VERSION, TEMPLATES_DIR
-from app.database import get_admin_metrics, init_db, log_intercepted_access
+from app.database import (
+    add_ioc_entry,
+    get_admin_metrics,
+    get_ioc_entries,
+    init_db,
+    log_intercepted_access,
+    unblock_ioc,
+)
 
 
 @asynccontextmanager
@@ -95,6 +103,52 @@ async def api_stats():
     """Provides real-time JSON statistics for dynamic dashboard updates."""
     metrics = get_admin_metrics()
     return metrics
+
+
+# Initialize ML Classifier instance
+ml_classifier = DomainClassifier()
+
+
+@app.get("/api/iocs", response_class=JSONResponse, tags=["IoC Management"])
+async def api_list_iocs(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None)
+):
+    """Lists registered IoCs with pagination and optional substring search."""
+    iocs = get_ioc_entries(limit=limit, offset=offset, search=search)
+    return {"total": len(iocs), "limit": limit, "offset": offset, "iocs": iocs}
+
+
+@app.post("/api/ioc/unblock", response_class=JSONResponse, tags=["IoC Management"])
+async def api_unblock_ioc(payload: Dict[str, Any] = Body(...)):
+    """Unblocks an IoC domain (Rollback action from SOC Dashboard).
+
+    Body format: {"domain": "example.com", "add_to_allowlist": true}
+    Removes domain from ioc_entries and appends it to allowlist.txt.
+    """
+    domain = payload.get("domain", "").strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="O campo 'domain' é obrigatório.")
+
+    add_to_allowlist = payload.get("add_to_allowlist", True)
+    result = unblock_ioc(domain=domain, add_to_allowlist=add_to_allowlist)
+    return result
+
+
+@app.post("/api/ml/analyze", response_class=JSONResponse, tags=["Machine Learning"])
+async def api_ml_analyze(payload: Dict[str, Any] = Body(...)):
+    """Analyzes a domain using the DGA / Machine Learning Classifier.
+
+    Body format: {"domain": "suspicious-string.xyz"}
+    Returns risk score, classification verdict, confidence, and explanatory signals.
+    """
+    domain = payload.get("domain", "").strip()
+    if not domain:
+        raise HTTPException(status_code=400, detail="O campo 'domain' é obrigatório.")
+
+    prediction = ml_classifier.predict(domain)
+    return prediction.to_dict()
 
 
 async def handle_sinkhole_interception(request: Request, path: str = "") -> HTMLResponse:

@@ -57,9 +57,10 @@ except ImportError:
     def generate_self_signed_cert(domain=None, days=365, force=False):
         return False, "app.config não disponível para geração automática"
 
-# Importa o módulo de Machine Learning / Extractor
+# Importa o módulo de Machine Learning / Extractor e Classificador
 try:
     from agent.extractor import DomainExtractor, ExtractionResult
+    from agent.classifier import DomainClassifier, PredictionResult
     HAS_ML_MODULE = True
 except ImportError:
     HAS_ML_MODULE = False
@@ -353,23 +354,25 @@ def handle_option_3() -> None:
 
 
 def handle_option_4() -> None:
-    """Opção 4: Agente de Machine Learning / Extrator e Filtro de Domínios."""
+    """Opção 4: Agente de Machine Learning / Extrator, Allowlist e Classificador DGA."""
     if not HAS_ML_MODULE:
-        warning_msg = "Módulo agent.extractor não encontrado."
+        warning_msg = "Módulo agent (extractor/classifier) não encontrado."
         print(f"\n{ANSI_RED}[✗] {warning_msg}{ANSI_RESET}\n")
         input(f"{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
         return
 
     extractor = DomainExtractor(auto_load_data_dir=True, data_dir=PROJECT_DIR / "data")
+    classifier = DomainClassifier()
 
     print(f"\n{ANSI_CYAN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
-    print(f" {ANSI_BOLD}AGENTE DE MACHINE LEARNING — EXTRATOR & ALLOWLIST DE AMEAÇAS{ANSI_RESET}")
+    print(f" {ANSI_BOLD}AGENTE DE MACHINE LEARNING — EXTRAÇÃO, ALLOWLIST & CLASSIFICADOR DGA{ANSI_RESET}")
     print(f" {ANSI_GRAY}Allowlist ativa:{ANSI_RESET} {ANSI_GREEN}{len(extractor.allowlist.exact_allowed)} domínios carregados{ANSI_RESET}")
     print(f"{ANSI_CYAN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
 
-    print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Analisar Texto Livre / Relatório / Indicadores Desarmados{ANSI_RESET}")
+    print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Analisar Texto / Indicadores (com Score ML & Classificação DGA){ANSI_RESET}")
     print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Processar Ficheiro de Texto ou Log de Ameaças{ANSI_RESET}")
-    print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Ver Domínios Carregados na Allowlist Local{ANSI_RESET}")
+    print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Classificar Domínio Único (Entropia de Shannon & Sinais DGA){ANSI_RESET}")
+    print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Ver Domínios Carregados na Allowlist Local{ANSI_RESET}")
     print(f"  {ANSI_GRAY}[0] Voltar ao menu principal{ANSI_RESET}")
 
     sub = input(f"\n{ANSI_BOLD}Escolha uma opção [padrão: 1]: {ANSI_RESET}").strip() or "1"
@@ -378,14 +381,14 @@ def handle_option_4() -> None:
         return
 
     if sub == "1":
-        print(f"\n{ANSI_YELLOW}[*] Cola o texto ou indicadores (ex: hxxps://c2[.]evil[.]top/gate, malware.xyz):{ANSI_RESET}")
+        print(f"\n{ANSI_YELLOW}[*] Cola o texto ou indicadores (ex: hxxps://c2[.]evil[.]top/gate, xzkfplwq987123jfk.xyz):{ANSI_RESET}")
         print(f"{ANSI_GRAY}(Pressiona ENTER após o texto){ANSI_RESET}")
         user_input = input(f"{ANSI_CYAN}Texto: {ANSI_RESET}").strip()
         if not user_input:
             print(f"{ANSI_YELLOW}[!] Nenhum texto fornecido.{ANSI_RESET}")
         else:
             res = extractor.extract_from_text(user_input)
-            _render_extraction_result(res)
+            _render_extraction_result(res, classifier)
 
     elif sub == "2":
         filepath_str = input(f"\n{ANSI_BOLD}Caminho do ficheiro a processar: {ANSI_RESET}").strip()
@@ -396,11 +399,37 @@ def handle_option_4() -> None:
             try:
                 content = path.read_text(encoding="utf-8", errors="ignore")
                 res = extractor.extract_from_text(content)
-                _render_extraction_result(res)
+                _render_extraction_result(res, classifier)
             except Exception as e:
                 print(f"{ANSI_RED}[✗] Erro ao ler ficheiro: {e}{ANSI_RESET}")
 
     elif sub == "3":
+        target = input(f"\n{ANSI_CYAN}Domínio a inspecionar com ML: {ANSI_RESET}").strip()
+        if not target:
+            print(f"{ANSI_YELLOW}[!] Nenhum domínio fornecido.{ANSI_RESET}")
+        else:
+            pred = classifier.predict(target)
+            feats = pred.features
+            score_pct = int(pred.risk_score * 100)
+            print(f"\n{ANSI_BOLD}--- RELATÓRIO DO CLASSIFICADOR DGA & HEURÍSTICAS ML ---{ANSI_RESET}")
+            print(f"Domínio Analisado:   {ANSI_BOLD}{pred.domain}{ANSI_RESET}")
+            print(f"Rótulo Principal:    {feats.main_label} (Comprimento: {feats.length})")
+            print(f"Entropia de Shannon: {ANSI_CYAN}{feats.entropy:.3f} bits{ANSI_RESET}")
+            print(f"Rácio de Vogais:     {feats.vowel_ratio * 100:.1f}%")
+            print(f"Rácio de Consoantes: {feats.consonant_ratio * 100:.1f}%")
+            print(f"Máx Consoantes Seq:  {feats.max_consecutive_consonants}")
+            print(f"TLD / Risco:         .{feats.tld} ({'Alto Risco' if feats.is_high_risk_tld else 'Padrão'})")
+            print(f"----------------------------------------------------------")
+
+            badge_color = ANSI_GREEN if pred.verdict == "BENIGN" else (ANSI_YELLOW if pred.verdict == "SUSPICIOUS" else ANSI_RED)
+            print(f"Veredito ML:         {badge_color}{ANSI_BOLD}{pred.verdict}{ANSI_RESET}")
+            print(f"Score de Risco:      {badge_color}{score_pct}%{ANSI_RESET} (Confiança: {int(pred.confidence * 100)}%)")
+            if pred.signals:
+                print(f"\n{ANSI_BOLD}Sinais Explicativos:{ANSI_RESET}")
+                for s in pred.signals:
+                    print(f"  {badge_color}●{ANSI_RESET} {s}")
+
+    elif sub == "4":
         allowed = sorted(extractor.allowlist.exact_allowed)
         print(f"\n{ANSI_BOLD}Domínios Confiáveis na Allowlist ({len(allowed)} total):{ANSI_RESET}")
         for idx, d in enumerate(allowed[:50], 1):
@@ -411,17 +440,29 @@ def handle_option_4() -> None:
     input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
 
 
-def _render_extraction_result(result) -> None:
-    """Apresenta os resultados da extração de forma clara e visual."""
+def _render_extraction_result(result, classifier: Optional[DomainClassifier] = None) -> None:
+    """Apresenta os resultados da extração e classificação ML de forma clara e visual."""
+    if classifier is None and HAS_ML_MODULE:
+        classifier = DomainClassifier()
+
     print(f"\n{ANSI_BOLD}--- RESULTADOS DO PIPELINE DE THREAT INTEL / ML ---{ANSI_RESET}")
     print(f"Candidatos brutos processados: {result.total_raw_candidates}")
     print(f"Domínios aprovados para bloqueio: {ANSI_GREEN}{ANSI_BOLD}{len(result.passed)}{ANSI_RESET}")
     print(f"Domínios filtrados por allowlist: {ANSI_YELLOW}{ANSI_BOLD}{len(result.filtered)}{ANSI_RESET}\n")
 
     if result.passed:
-        print(f"{ANSI_GREEN}{ANSI_BOLD}[!] Domínios Ameaça Aprovados (Desofuscados & Normalizados):{ANSI_RESET}")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}[!] Domínios Ameaça Aprovados (Desofuscados & Triados com ML):{ANSI_RESET}")
         for d in result.passed:
-            print(f"  {ANSI_RED}●{ANSI_RESET} {ANSI_BOLD}{d}{ANSI_RESET}")
+            if classifier:
+                pred = classifier.predict(d)
+                pct = int(pred.risk_score * 100)
+                badge_color = ANSI_RED if pred.verdict == "HIGH_RISK_DGA" else (ANSI_YELLOW if pred.verdict == "SUSPICIOUS" else ANSI_GREEN)
+                print(f"  {badge_color}●{ANSI_RESET} {ANSI_BOLD}{d:<35}{ANSI_RESET} [{badge_color}{pred.verdict} - {pct}%{ANSI_RESET}]")
+                if pred.signals:
+                    for sig in pred.signals[:2]:
+                        print(f"      {ANSI_GRAY}└─ {sig}{ANSI_RESET}")
+            else:
+                print(f"  {ANSI_RED}●{ANSI_RESET} {ANSI_BOLD}{d}{ANSI_RESET}")
 
     if result.filtered:
         print(f"\n{ANSI_YELLOW}{ANSI_BOLD}[i] Domínios Filtrados pela Allowlist (Falsos Positivos Evitados):{ANSI_RESET}")
