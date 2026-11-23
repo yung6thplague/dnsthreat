@@ -143,89 +143,70 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def render_banner() -> None:
-    """Renderiza o banner ASCII de Dtblocker"""
+    """Renderiza o banner ASCII de dtblocker."""
     clear_screen()
 
-    banner_text = ""
-    if HAS_PYFIGLET:
-        try:
-            raw_figlet = pyfiglet.figlet_format("Dtblocker", font="slant")
-            banner_text = colored(raw_figlet, "cyan", attrs=["bold"])
-        except Exception:
-            banner_text = ""
-
-    if not banner_text:
-        # Fallback de alta fidelidade em ASCII nativo (estilo Slant/Cyberpunk)
-        banner_text = f"""{ANSI_CYAN}{ANSI_BOLD}
-[0;37m                                                                       [0m
-[0;37m▀▀▀▀██▄ ░░░     ░░░     ░░░                     ░░░                    [0m
-[0;37m░░░ ███ ▒▒▒     ▒▒▒     ▒▒▒                     ▒▒▒                    [0m
-[0;37m▒▒▒ ███ ▓▓▓▄▄   ▓▓▓     ▓▓▓                     ▓▓▓                    [0m
-[0;37m▓▓▓ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄[0m
-[0;37m███ ███ ███     ███ ███ ███     ███ ███ ███ ███ ███ ███ ███ ███ ███ ███[0m
-[0;37m███ ███ ███     ███ ███ ███     ███ ███ ███ ▀▀▀ ███▀██▄ ███▀▀▀▀ ███    [0m
-[0;37m███ ███ ███ ▄▄▄ ███ ███ ███ ▄▄▄ ███ ███ ███ ███ ███ ███ ███ ███ ███    [0m
-[0;37m███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███    [0m
-[0;37m███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    [0m
-[0;37m          ▀█    █▀        ▀█      █▀      █▀        █▀    █▀     ▀█    [0m
-[0;37m           ▄    ▄          ▄      ▄       ▄         ▄     ▄       ▄    [0m
-   
-{ANSI_RESET}"""
-
-    ssl_status_rich = "[bold green]Ativo (:443)[/bold green]" if is_ssl_configured() else "[yellow]Inativo[/yellow]"
-    ssl_status_ansi = f"{ANSI_GREEN}Ativo (:443){ANSI_RESET}" if is_ssl_configured() else f"{ANSI_YELLOW}Inativo{ANSI_RESET}"
+    banner_text = """
+▀▀▀▀██▄ ░░░     ░░░     ░░░                     ░░░                    
+░░░ ███ ▒▒▒     ▒▒▒     ▒▒▒                     ▒▒▒                    
+▒▒▒ ███ ▓▓▓▄▄   ▓▓▓     ▓▓▓                     ▓▓▓                    
+▓▓▓ ███ ███     ███▀██▄ ███     ▄██▀██▄ ▄██▀██▄ ███ ███ ▄██▀██▄ ▄██▀██▄
+███ ███ ███     ███ ███ ███     ███ ███ ███ ███ ███ ███ ███ ███ ███ ███
+███ ███ ███     ███ ███ ███     ███ ███ ███ ▀▀▀ ███▀██▄ ███▀▀▀▀ ███    
+███ ███ ███ ▄▄▄ ███ ███ ███ ▄▄▄ ███ ███ ███ ███ ███ ███ ███ ███ ███    
+███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███ ███    
+███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    
+          ▀█    █▀        ▀█      █▀      █▀        █▀    █▀     ▀█    
+           ▄    ▄          ▄      ▄       ▄         ▄     ▄       ▄    """
 
     if HAS_RICH and rich_console:
-        rich_console.print(banner_text)
+        rich_console.print(f"[bold cyan]{banner_text}[/bold cyan]")
         info_panel = Panel(
             Text.from_markup(
-                f"[bold green]DNS Threat Blocker & SOC Sinkhole Control Center[/bold green]\n"
                 f"[dim white]Host:[/] [cyan]{platform.node()}[/] | "
-                f"[dim white]OS:[/] [cyan]{platform.system()} {platform.release()}[/] | "
                 f"[dim white]Sinkhole IP:[/] [bold yellow]{get_local_ip()}[/bold yellow] | "
-                f"[dim white]SSL/TLS:[/] {ssl_status_rich} | "
                 f"[dim white]Data UTC:[/] [yellow]{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}[/]"
             ),
             border_style="green",
-            title="[bold red]● SOC DEFENSE ENGINE ACTIVE ●[/bold red]",
+            title="[bold red]● DEFENSE ENGINE ACTIVE ●[/bold red]",
             title_align="center"
         )
         rich_console.print(info_panel)
     else:
-        print(banner_text)
+        print(f"{ANSI_CYAN}{ANSI_BOLD}{banner_text}{ANSI_RESET}")
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
-        print(f" {ANSI_BOLD}DNS Threat Blocker {ANSI_RESET}")
-        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}OS:{ANSI_RESET} {ANSI_CYAN}{platform.system()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}SSL/TLS:{ANSI_RESET} {ssl_status_ansi} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
+        print(f" {ANSI_RED}{ANSI_BOLD}● DEFENSE ENGINE ACTIVE ●{ANSI_RESET}")
+        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
         print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
-
 
 def display_menu() -> None:
     """Apresenta o menu de seleção de opções formatado."""
-    ssl_desc = "HTTPS :443" if is_ssl_configured() else "HTTP :80"
     if HAS_RICH and rich_console:
-        table = Table(title="[bold white]MENU DE OPERAÇÕES [/bold white]", show_header=True, header_style="bold magenta", border_style="cyan")
+        table = Table(
+            title="[bold white]MENU DE OPERAÇÕES[/bold white]",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="cyan"
+        )
         table.add_column("Opção", justify="center", style="bold green", width=8)
-        table.add_column("Ação", style="bold white", width=38)
-        table.add_column("Comando Associado", style="dim yellow")
+        table.add_column("Ação", style="bold white", width=42)
 
-        table.add_row("[1]", f"Iniciar Servidor Web ({ssl_desc})", f"sudo ./venv/bin/uvicorn app.main:app ({ssl_desc})")
-        table.add_row("[2]", "Sincronizar Feeds de Ameaças", "sudo python3 sync_iocs.py")
-        table.add_row("[3]", "Reiniciar Unbound DNS", "sudo systemctl restart unbound")
-        table.add_row("[4]", "Agente de Machine Learning / Extractor", "Análise de Texto & Allowlist [Ativo]")
-        table.add_row("[5]", f"Atualizar IP do Sinkhole ({get_local_ip()})", "sudo python3 sync_iocs.py --refresh-ip")
-        table.add_row("[6]", "Sair da Consola", "Encerramento seguro do CLI")
+        table.add_row("[1]", "Iniciar servidor")
+        table.add_row("[2]", "Sincronizar Feeds de Ameaças")
+        table.add_row("[3]", "Reiniciar Unbound DNS")
+        table.add_row("[4]", "Agente de Machine Learning / Extractor")
+        table.add_row("[5]", "Atualizar IP do Sinkhole")
+        table.add_row("[6]", "Sair da Consola")
 
         rich_console.print(table)
     else:
-        current_ip = get_local_ip()
         print(f" {ANSI_MAGENTA}{ANSI_BOLD}--- MENU DE OPERAÇÕES SECOPS ---{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar Servidor Web ({ssl_desc}){ANSI_RESET}   {ANSI_GRAY}(sudo ./venv/bin/uvicorn ... {ssl_desc}){ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}       {ANSI_GRAY}(sudo python3 sync_iocs.py){ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}              {ANSI_GRAY}(sudo systemctl restart unbound){ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Agente de Machine Learning / Extractor{ANSI_RESET} {ANSI_GREEN}[Ativo]{ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[5]{ANSI_RESET} {ANSI_BOLD}Atualizar IP do Sinkhole{ANSI_RESET}          {ANSI_CYAN}[IP atual: {current_ip}]{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar servidor{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Agente de Machine Learning / Extractor{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[5]{ANSI_RESET} {ANSI_BOLD}Atualizar IP do Sinkhole{ANSI_RESET}")
         print(f"  {ANSI_RED}[6]{ANSI_RESET} {ANSI_BOLD}Sair{ANSI_RESET}\n")
-
 
 def run_command_interactive(cmd_list: List[str], description: str) -> None:
     """
