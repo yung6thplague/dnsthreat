@@ -28,8 +28,8 @@ ALLOWLIST_PATH: Path = DATA_DIR / "allowlist.txt"
 
 # -----------------------------------------------------------------------------
 # SSL / TLS Centralized Configuration
-# Suporta variáveis de ambiente (CERTS_DIR, SSL_KEYFILE, SSL_CERTFILE) com
-# fallback automático relativo a BASE_DIR / "certs".
+# Supports environment variables (CERTS_DIR, SSL_KEYFILE, SSL_CERTFILE) with
+# automatic fallback relative to BASE_DIR / "certs".
 # -----------------------------------------------------------------------------
 CERTS_DIR: Path = Path(os.getenv("CERTS_DIR", str(BASE_DIR / "certs")))
 SSL_KEY_PATH: Path = Path(os.getenv("SSL_KEYFILE", str(CERTS_DIR / "sinkhole.key")))
@@ -42,20 +42,20 @@ APP_VERSION: str = "1.2.0"
 
 
 def get_local_ip() -> str:
-    """Deteta dinamicamente o IP IPv4 local da interface de rede ativa.
+    """Dynamically detects the local IPv4 address of the active network interface.
 
-    Utiliza o módulo nativo socket para abrir um socket UDP para 8.8.8.8:80.
-    O socket NÃO envia tráfego real (UDP é connectionless); apenas força o
-    kernel a selecionar a interface de rede com rota para o exterior,
-    revelando o IP local atribuído pela rede Wi-Fi/Ethernet atual.
+    Uses the native socket module to open a UDP socket towards 8.8.8.8:80.
+    The socket does NOT transmit real traffic (UDP is connectionless); it merely
+    prompts the kernel to select the network interface routing outbound traffic,
+    retrieving the local IP assigned by the current network interface.
 
     Returns:
-        O endereço IPv4 da interface ativa (ex: '192.168.1.102').
-        Em caso de falha (sem rede), retorna '127.0.0.1' como fallback seguro.
+        The IPv4 address of the active interface (e.g., '192.168.1.102').
+        Falls back safely to '127.0.0.1' on error (no network connectivity).
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            # Não envia dados; connect() em UDP apenas define a rota
+            # Does not send packets; connect() on UDP only binds routing path
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
     except (OSError, socket.error):
@@ -63,13 +63,13 @@ def get_local_ip() -> str:
 
 
 def get_local_ipv6() -> Optional[str]:
-    """Deteta dinamicamente o endereço IPv6 global/ULA da interface ativa.
+    """Dynamically detects the global/ULA IPv6 address of the active interface.
 
-    Utiliza um socket UDP connectionless apontado para 2001:4860:4860::8888.
-    Descarta loopback (::1) e endereços link-local não roteáveis (fe80::/10).
+    Uses a connectionless UDP socket pointing towards 2001:4860:4860::8888.
+    Discards loopback (::1) and non-routable link-local addresses (fe80::/10).
 
     Returns:
-        Endereço IPv6 global ou None se a interface não tiver conectividade IPv6.
+        Global IPv6 address or None if IPv6 connectivity is unavailable.
     """
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
@@ -83,7 +83,7 @@ def get_local_ipv6() -> Optional[str]:
 
 
 def is_ssl_configured() -> bool:
-    """Verifica se os ficheiros de chave privada e certificado SSL/TLS existem e são válidos."""
+    """Checks whether SSL/TLS private key and certificate files exist and are non-empty."""
     try:
         return (
             SSL_KEY_PATH.is_file()
@@ -96,7 +96,7 @@ def is_ssl_configured() -> bool:
 
 
 def get_ssl_uvicorn_args() -> List[str]:
-    """Retorna os argumentos CLI do Uvicorn para SSL se os certificados existirem."""
+    """Returns Uvicorn CLI arguments for SSL if certificates are configured."""
     if is_ssl_configured():
         return [
             "--ssl-keyfile", str(SSL_KEY_PATH),
@@ -110,18 +110,18 @@ def generate_self_signed_cert(
     days: int = 365,
     force: bool = False
 ) -> Tuple[bool, str]:
-    """Gera um certificado SSL auto-assinado (RSA 2048) em modo batch/não interativo.
+    """Generates a self-signed SSL/TLS certificate (RSA 2048) in non-interactive batch mode.
     
-    Cria automaticamente o diretório de certificados caso não exista e define
-    as permissões seguras recomendadas (chmod 600 key / 644 crt em sistemas POSIX).
+    Automatically creates the certificates directory if missing and enforces
+    secure permissions (chmod 600 key / 644 crt on POSIX systems).
     """
     if is_ssl_configured() and not force:
-        return True, f"Certificados já configurados em {CERTS_DIR}"
+        return True, f"Certificates already configured in {CERTS_DIR}"
 
     CERTS_DIR.mkdir(parents=True, exist_ok=True)
     openssl_bin = shutil.which("openssl")
     if not openssl_bin:
-        return False, "O utilitário 'openssl' não foi encontrado no PATH do sistema."
+        return False, "The 'openssl' binary was not found in system PATH."
 
     current_ip = get_local_ip()
     cn_domain = domain or current_ip
@@ -144,8 +144,8 @@ def generate_self_signed_cert(
                     os.chmod(SSL_CERT_PATH, 0o644)
                 except OSError:
                     pass
-            return True, f"Certificado gerado com sucesso em {CERTS_DIR} (CN: {cn_domain})"
+            return True, f"Certificate successfully generated in {CERTS_DIR} (CN: {cn_domain})"
         else:
-            return False, f"Falha no openssl ({res.returncode}): {res.stderr.strip()}"
+            return False, f"OpenSSL error ({res.returncode}): {res.stderr.strip()}"
     except Exception as exc:
-        return False, f"Erro ao gerar certificados: {exc}"
+        return False, f"Error generating certificates: {exc}"

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""
-run_sinkhole.py — DNS Threat Blocker Server Runner
+"""run_sinkhole.py — DNS Threat Blocker Server Runner.
 
-Inicia o servidor Uvicorn com suporte centralizado para:
-- HTTPS (Porta 443 com SSL/TLS)
-- HTTP (Porta 80)
-- Modo Dual (Porta 80 e 443 em processos paralelos)
-- Geração automática de certificados SSL auto-assinados
+Starts the Uvicorn web server with centralized support for:
+- HTTPS (Port 443 with SSL/TLS)
+- HTTP (Port 80 legacy mode)
+- Dual Mode (Port 80 and 443 running in parallel processes)
+- Automatic generation of self-signed SSL/TLS certificates
 """
 
 import argparse
@@ -15,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-# Adiciona o diretório base ao sys.path
+# Add project base directory to sys.path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
@@ -33,16 +32,16 @@ from app.database import init_db
 
 
 def run_https(host: str = "0.0.0.0", port: int = 443):
-    """Inicia o servidor em modo HTTPS seguro."""
+    """Starts the web server in secure HTTPS mode."""
     if not is_ssl_configured():
-        print(f"[!] Certificados SSL não encontrados em {SSL_KEY_PATH.parent}. A gerar automaticamente...")
+        print(f"[!] SSL certificates not found in {SSL_KEY_PATH.parent}. Generating automatically...")
         ok, msg = generate_self_signed_cert()
         if not ok:
-            print(f"[✗] Falha ao gerar certificados: {msg}")
+            print(f"[✗] Failed to generate certificates: {msg}")
             sys.exit(1)
         print(f"[✓] {msg}")
 
-    print(f"[▶] A iniciar {APP_TITLE} v{APP_VERSION} em HTTPS ({host}:{port})...")
+    print(f"[▶] Starting {APP_TITLE} v{APP_VERSION} on HTTPS ({host}:{port})...")
     uvicorn.run(
         "app.main:app",
         host=host,
@@ -54,8 +53,8 @@ def run_https(host: str = "0.0.0.0", port: int = 443):
 
 
 def run_http(host: str = "0.0.0.0", port: int = 80):
-    """Inicia o servidor em modo HTTP legado."""
-    print(f"[▶] A iniciar {APP_TITLE} v{APP_VERSION} em HTTP ({host}:{port})...")
+    """Starts the web server in legacy HTTP mode."""
+    print(f"[▶] Starting {APP_TITLE} v{APP_VERSION} on HTTP ({host}:{port})...")
     uvicorn.run(
         "app.main:app",
         host=host,
@@ -65,14 +64,14 @@ def run_http(host: str = "0.0.0.0", port: int = 80):
 
 
 def run_dual(host: str = "0.0.0.0", http_port: int = 80, https_port: int = 443):
-    """Inicia instâncias em paralelo nas portas 80 (HTTP) e 443 (HTTPS)."""
+    """Starts parallel instances on port 80 (HTTP) and port 443 (HTTPS)."""
     if not is_ssl_configured():
         ok, msg = generate_self_signed_cert()
         if not ok:
             print(f"[✗] {msg}")
             sys.exit(1)
 
-    print(f"[▶] A iniciar Modo Dual (HTTP :{http_port} e HTTPS :{https_port})...")
+    print(f"[▶] Starting Dual Mode (HTTP :{http_port} and HTTPS :{https_port})...")
     p_https = multiprocessing.Process(
         target=run_https, args=(host, https_port), name="Sinkhole-HTTPS"
     )
@@ -87,7 +86,7 @@ def run_dual(host: str = "0.0.0.0", http_port: int = 80, https_port: int = 443):
         p_https.join()
         p_http.join()
     except KeyboardInterrupt:
-        print("\n[!] A encerrar servidores paralelos...")
+        print("\n[!] Shutting down parallel servers...")
         p_https.terminate()
         p_http.terminate()
         sys.exit(0)
@@ -101,27 +100,27 @@ def main():
         "--mode",
         choices=["https", "http", "dual"],
         default="https" if is_ssl_configured() else "http",
-        help="Modo de execução (https, http ou dual). Padrão: https se certificados existirem",
+        help="Execution mode (https, http, or dual). Default: https if certificates exist",
     )
     parser.add_argument(
         "--host",
         default="0.0.0.0",
-        help="Endereço de escuta (padrão: 0.0.0.0)",
+        help="Listening address (default: 0.0.0.0)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        help="Porta personalizada (padrão: 443 para HTTPS, 80 para HTTP)",
+        help="Custom port (default: 443 for HTTPS, 80 for HTTP)",
     )
     parser.add_argument(
         "--generate-cert",
         action="store_true",
-        help="Força a regeneração de certificados SSL auto-assinados",
+        help="Forces regeneration of self-signed SSL certificates",
     )
 
     args = parser.parse_args()
 
-    # Inicializa tabelas SQLite caso ainda não existam
+    # Initialize SQLite database schema if not already present
     init_db()
 
     if args.generate_cert:

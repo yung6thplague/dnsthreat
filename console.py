@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""
-console.py — DTBlocker Interactive Security Operations CLI
+"""console.py — DTBlocker Interactive Security Operations CLI.
 
-Ponto de entrada de linha de comandos (CLI) para gestão centralizada do DNS Sinkhole:
-1. Iniciar Servidor Web / Dashboard (FastAPI/Uvicorn em HTTP ou HTTPS)
-2. Sincronizar Feeds de Ameaças (Threat Intelligence Ingestion)
-3. Reiniciar Unbound DNS (validação sintática e recarregamento)
-4. Agente de Machine Learning / Extractor (análise e classificação de DGA)
-5. Atualizar IP do Sinkhole (deteção dinâmica e reescrita de regras Unbound)
-6. Sair da Consola (encerramento limpo de processos filhos)
+Command-line entrypoint for centralized DNS Sinkhole operations:
+1. Start Web Server / SOC Dashboard (FastAPI/Uvicorn on HTTP or HTTPS)
+2. Synchronize Threat Intelligence Feeds (Ingestion & Normalization)
+3. Restart Unbound DNS (syntax validation and zone reload)
+4. Machine Learning Agent / Extractor (DGA classification & allowlist audit)
+5. Refresh Sinkhole IP (dynamic network IP update and Unbound rule rewrite)
+6. Exit Console (clean teardown of active child processes)
 """
 
 import atexit
@@ -23,10 +22,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-# Diretório base do projeto (/home/pserver/dnsthreat ou raiz onde está console.py)
+# Project root directory
 PROJECT_DIR: Path = Path(__file__).resolve().parent
 
-# Importa a função de deteção dinâmica de IP e utilitários de SSL/TLS
+# Import dynamic IP detection and SSL/TLS utilities
 sys.path.insert(0, str(PROJECT_DIR))
 try:
     from app.config import (
@@ -38,7 +37,7 @@ try:
         CERTS_DIR
     )
 except ImportError:
-    # Fallback inline caso o import falhe (ex: venv não ativado)
+    # Inline fallback if import fails (e.g., venv not activated)
     import socket
     def get_local_ip() -> str:
         try:
@@ -56,9 +55,9 @@ except ImportError:
         return SSL_KEY_PATH.is_file() and SSL_CERT_PATH.is_file()
 
     def generate_self_signed_cert(domain=None, days=365, force=False):
-        return False, "app.config não disponível para geração automática"
+        return False, "app.config not available for automatic generation"
 
-# Importa o módulo de Machine Learning / Extractor e Classificador
+# Import Machine Learning / Domain Extractor and Classifier modules
 HAS_ML_MODULE = False
 ML_IMPORT_ERROR: Optional[str] = None
 try:
@@ -69,12 +68,12 @@ except Exception as e:
     HAS_ML_MODULE = False
     ML_IMPORT_ERROR = str(e)
 
-# Referência global ao processo filho ativo para limpeza
+# Global reference to active child subprocess for clean termination
 active_process: Optional[subprocess.Popen] = None
 
 # -----------------------------------------------------------------------------
-# Tentativa de importação de bibliotecas visuais (Rich, PyFiglet, Termcolor)
-# Caso não estejam instaladas, o script utiliza um motor ANSI nativo integrado.
+# Optional terminal styling libraries (Rich, PyFiglet, Termcolor)
+# Falls back to native ANSI escape sequences if not installed.
 # -----------------------------------------------------------------------------
 try:
     import pyfiglet
@@ -95,7 +94,7 @@ except ImportError:
     HAS_RICH = False
     rich_console = None
 
-# Códigos ANSI para estilização nativa de fallback
+# Native ANSI styling escape codes
 ANSI_RESET = "\033[0m"
 ANSI_BOLD = "\033[1m"
 ANSI_RED = "\033[91m"
@@ -109,12 +108,12 @@ ANSI_GRAY = "\033[90m"
 
 
 def clear_screen() -> None:
-    """Limpa o ecrã do terminal de forma compatível com Linux e Windows."""
+    """Clears terminal screen across both POSIX and Windows systems."""
     os.system("cls" if os.name == "nt" else "clear")
 
 
 def cleanup_processes() -> None:
-    """Termina quaisquer subprocessos ativos para evitar processos órfãos."""
+    """Terminates active child subprocesses to prevent orphaned processes."""
     global active_process
     if active_process and active_process.poll() is None:
         try:
@@ -129,12 +128,12 @@ def cleanup_processes() -> None:
         active_process = None
 
 
-# Regista a limpeza automática ao sair
+# Register cleanup hook upon interpreter exit
 atexit.register(cleanup_processes)
 
 
 def signal_handler(signum, frame) -> None:
-    """Manipulador para SIGINT (Ctrl+C) ao nível do interpretador."""
+    """Graceful signal handler for SIGINT (Ctrl+C)."""
     cleanup_processes()
     print(f"\n\n{ANSI_RED}[!] Operação interrompida pelo utilizador (Ctrl+C). A sair...{ANSI_RESET}")
     sys.exit(0)
@@ -144,7 +143,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def render_banner() -> None:
-    """Renderiza o banner ASCII solido de dtblocker em verde proporcional."""
+    """Renders proportional solid green ASCII banner for dtblocker."""
     clear_screen()
 
     banner_text = """
@@ -159,7 +158,7 @@ def render_banner() -> None:
 ███▄██▀ ▀██▄██▀ ███▄██▀ ▀██▄██▀ ▀██▄██▀ ▀██▄██▀ ███ ███ ▀██▄██▀ ███    """
 
     if HAS_RICH and rich_console:
-        # Banner totalmente solido em verde e caixa proporcional de largura 73 em vermelho
+        # Solid green banner and 73-column wide red panel
         rich_console.print(f"[bold green]{banner_text}[/bold green]")
         info_panel = Panel(
             Text.from_markup(
@@ -182,7 +181,7 @@ def render_banner() -> None:
 
 
 def display_menu() -> None:
-    """Apresenta o menu de seleção de opções formatado e proporcional."""
+    """Displays formatted, proportional SOC operations menu."""
     if HAS_RICH and rich_console:
         table = Table(
             title="[bold red]MENU DE OPERAÇÕES[/bold red]",
@@ -216,16 +215,16 @@ def display_menu() -> None:
         print(f"{ANSI_GREEN}{ANSI_BOLD}└───────────┴───────────────────────────────────────────────────────────┘{ANSI_RESET}\n")
 
 def run_command_interactive(cmd_list: List[str], description: str) -> None:
-    """
-    Executa comandos do sistema operativo de forma controlada via subprocess.
-    Interceta Ctrl+C para regressar ao menu sem quebrar a execução da consola principal.
+    """Executes operating system commands in a controlled manner via subprocess.
+    
+    Catches Ctrl+C to return to menu without terminating the main console.
     """
     global active_process
     print(f"\n{ANSI_CYAN}{ANSI_BOLD}[▶] A executar:{ANSI_RESET} {' '.join(cmd_list)}")
     print(f"{ANSI_GRAY}{description}{ANSI_RESET}\n")
 
     try:
-        # Executa no diretório base do projeto
+        # Execute in project root directory
         active_process = subprocess.Popen(
             cmd_list,
             cwd=str(PROJECT_DIR),
@@ -246,22 +245,22 @@ def run_command_interactive(cmd_list: List[str], description: str) -> None:
 
 
 def resolve_uvicorn_path() -> str:
-    """Localiza o binário do uvicorn (prioriza ./venv/bin/uvicorn, com fallback para PATH)."""
+    """Resolves uvicorn executable binary path (prioritizes ./venv/bin/uvicorn)."""
     venv_uvicorn = PROJECT_DIR / "venv" / "bin" / "uvicorn"
     if venv_uvicorn.is_file() and os.access(venv_uvicorn, os.X_OK):
         return str(venv_uvicorn)
     
-    # Fallback caso o uvicorn esteja no PATH global
+    # Fallback if uvicorn is available in system PATH
     system_uvicorn = shutil.which("uvicorn")
     if system_uvicorn:
         return system_uvicorn
     
-    # Retorna o caminho padrão exigido
+    # Return default required relative path
     return "./venv/bin/uvicorn"
 
 
 def handle_option_1() -> None:
-    """Opção 1: Iniciar o Servidor Web / Dashboard (com suporte dinâmico a HTTPS :443 e HTTP :80)."""
+    """Option 1: Start Web Server / Dashboard (supporting HTTPS :443 and HTTP :80)."""
     uvicorn_bin = resolve_uvicorn_path()
     ssl_ready = is_ssl_configured()
 
@@ -321,16 +320,16 @@ def handle_option_1() -> None:
 
 
 def handle_option_2() -> None:
-    """Opção 2: Sincronizar Feeds de Ameaças (sync_iocs.py)."""
+    """Option 2: Synchronize Threat Intelligence Feeds (sync_iocs.py)."""
     sync_script = PROJECT_DIR / "sync_iocs.py"
-    # sync_iocs.py necessita de privilégios sudo para escrever em /etc/unbound/
+    # sync_iocs.py requires sudo privileges to write to /etc/unbound/
     cmd = ["sudo", "python3", str(sync_script)]
     run_command_interactive(cmd, "A descarregar IoCs, atualizar SQLite e recarregar configuração do Unbound...")
     input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
 
 
 def handle_option_3() -> None:
-    """Opção 3: Reiniciar Unbound DNS (sudo systemctl restart unbound)."""
+    """Option 3: Restart Unbound DNS service (sudo systemctl restart unbound)."""
     cmd = ["sudo", "systemctl", "restart", "unbound"]
     print(f"\n{ANSI_CYAN}[▶] A reiniciar o serviço Unbound DNS...{ANSI_RESET}")
     try:
@@ -345,7 +344,7 @@ def handle_option_3() -> None:
 
 
 def handle_option_4() -> None:
-    """Opção 4: Agente de Machine Learning / Extrator, Allowlist e Classificador DGA."""
+    """Option 4: Machine Learning Agent / Extractor, Allowlist, and DGA Classifier."""
     if not HAS_ML_MODULE:
         err_detail = f"\n{ANSI_GRAY}Detalhe: {ML_IMPORT_ERROR}{ANSI_RESET}" if ML_IMPORT_ERROR else ""
         print(f"\n{ANSI_RED}[✗] Módulo agent (extractor/classifier) indisponível.{err_detail}{ANSI_RESET}\n")
@@ -432,7 +431,7 @@ def handle_option_4() -> None:
 
 
 def _render_extraction_result(result, classifier: Optional[DomainClassifier] = None) -> None:
-    """Apresenta os resultados da extração e classificação ML de forma clara e visual."""
+    """Renders extraction and ML classification results with visual feedback."""
     if classifier is None and HAS_ML_MODULE:
         classifier = DomainClassifier()
 
@@ -462,7 +461,7 @@ def _render_extraction_result(result, classifier: Optional[DomainClassifier] = N
 
 
 def handle_option_5() -> None:
-    """Opção 5: Atualizar IP do Sinkhole (--refresh-ip)."""
+    """Option 5: Refresh Sinkhole IP (--refresh-ip)."""
     current_ip = get_local_ip()
     print(f"\n{ANSI_CYAN}{ANSI_BOLD}[▶] IP detetado na rede atual:{ANSI_RESET} {ANSI_GREEN}{current_ip}{ANSI_RESET}")
     print(f"{ANSI_GRAY}A reescrever o IP no threat_feed.conf e a reiniciar o Unbound...{ANSI_RESET}\n")
@@ -474,12 +473,12 @@ def handle_option_5() -> None:
 
 
 def main_loop() -> None:
-    """Ciclo principal de execução interativa do CLI."""
+    """Main interactive CLI operational loop."""
     while True:
         render_banner()
         display_menu()
 
-        # Obter escolha do utilizador
+        # Capture user selection
         choice = ""
         try:
             if HAS_RICH and rich_console:
@@ -493,7 +492,7 @@ def main_loop() -> None:
             print(f"{ANSI_YELLOW}[!] Sessão interrompida. Até à próxima!{ANSI_RESET}")
             sys.exit(0)
 
-        # Tratar seleção
+        # Dispatch user selection
         if choice == "1":
             handle_option_1()
         elif choice == "2":

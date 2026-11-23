@@ -210,7 +210,7 @@ def unblock_ioc(domain: str, add_to_allowlist: bool = True) -> Dict[str, Any]:
 
             if clean_domain not in cleaned_existing:
                 with ALLOWLIST_PATH.open("a", encoding="utf-8") as f:
-                    f.write(f"{clean_domain}  # Desbloqueado via SOC Console/Dashboard\n")
+                    f.write(f"{clean_domain}  # Unblocked via SOC Console/Dashboard\n")
                 added_to_allowlist = True
         except Exception as e:
             # Non-blocking error for allowlist file write

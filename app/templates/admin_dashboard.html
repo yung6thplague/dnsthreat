@@ -359,7 +359,8 @@
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
       <!-- Card 1: Fast IoC Rollback / Unblock -->
-      <div class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-6 shadow-xl transition">
+      <div
+        class="bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-6 shadow-xl transition">
         <div class="flex items-center space-x-2 mb-4">
           <div class="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -397,7 +398,8 @@
       </div>
 
       <!-- Card 2: ML DGA & Threat Classifier -->
-      <div class="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 rounded-2xl p-6 shadow-xl transition">
+      <div
+        class="bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 rounded-2xl p-6 shadow-xl transition">
         <div class="flex items-center space-x-2 mb-4">
           <div class="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -407,7 +409,8 @@
           </div>
           <div>
             <h2 class="text-base font-bold text-white">Triagem Heurística & Classificador ML (DGA)</h2>
-            <p class="text-xs text-slate-400">Cálculo de entropia de Shannon, proporção de consoantes e deteção de anomalias</p>
+            <p class="text-xs text-slate-400">Cálculo de entropia de Shannon, proporção de consoantes e deteção de
+              anomalias</p>
           </div>
         </div>
 
@@ -422,10 +425,12 @@
           </div>
 
           <!-- ML Live Result Display Container -->
-          <div id="ml-result-box" class="hidden mt-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-2">
+          <div id="ml-result-box"
+            class="hidden mt-3 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-slate-400">Veredito: <strong id="ml-verdict" class="font-mono"></strong></span>
-              <span class="text-slate-400">Score de Risco: <strong id="ml-score" class="font-mono text-cyan-300"></strong></span>
+              <span class="text-slate-400">Score de Risco: <strong id="ml-score"
+                  class="font-mono text-cyan-300"></strong></span>
             </div>
             <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div id="ml-risk-bar" class="h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
@@ -703,16 +708,15 @@
     function showToast(message, isSuccess = true) {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
-      toast.className = `pointer-events-auto flex items-center space-x-2 px-4 py-3 rounded-xl border text-xs shadow-2xl transition duration-300 transform translate-y-2 opacity-0 ${
-        isSuccess 
-          ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200' 
-          : 'bg-rose-950/90 border-rose-500/40 text-rose-200'
-      }`;
+      toast.className = `pointer-events-auto flex items-center space-x-2 px-4 py-3 rounded-xl border text-xs shadow-2xl transition duration-300 transform translate-y-2 opacity-0 ${isSuccess
+        ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200'
+        : 'bg-rose-950/90 border-rose-500/40 text-rose-200'
+        }`;
       toast.innerHTML = `
         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          ${isSuccess 
-            ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>' 
-            : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'}
+          ${isSuccess
+          ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+          : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'}
         </svg>
         <span class="font-medium">${escapeHtml(message)}</span>
       `;
@@ -802,7 +806,7 @@
           resultBox.classList.remove('hidden');
           const percent = Math.round(data.risk_score * 100);
           scoreEl.innerText = `${percent}% (Confiança: ${Math.round(data.confidence * 100)}%)`;
-          
+
           let verdictColor = 'text-emerald-400';
           let barGradient = 'from-emerald-500 to-teal-500';
           if (data.verdict === 'HIGH_RISK_DGA') {

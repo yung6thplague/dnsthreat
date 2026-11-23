@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""
-sync_iocs.py — DNS Threat Blocker
-0
-Requisitos:
+"""sync_iocs.py — DNS Threat Blocker & Threat Intelligence Ingestion Engine.
+
+Requirements:
     - Python 3.9+
     - pip install requests
-    - Execução com sudo (para escrita em /etc/unbound/ e systemctl)
+    - Root / sudo privileges (for writing to /etc/unbound/ and systemctl restart)
 
-Uso:
-    sudo python3 /home/pserver/dnsthreat/sync_iocs.py
-    sudo python3 /home/pserver/dnsthreat/sync_iocs.py --dry-run
-    sudo python3 /home/pserver/dnsthreat/sync_iocs.py --verbose
+Usage:
+    sudo python3 sync_iocs.py
+    sudo python3 sync_iocs.py --dry-run
+    sudo python3 sync_iocs.py --verbose
 """
 
 import argparse
@@ -29,12 +28,12 @@ from typing import Optional
 
 import requests
 
-# Garante que a raiz do projeto está no sys.path para execução via sudo noutras pastas
+# Ensure project base directory is in sys.path for sudo execution from any cwd
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-# Importa o motor de extração, normalização e allowlist de Machine Learning / Threat Intel
+# Import Machine Learning / Threat Intel domain extraction and normalization engine
 try:
     from agent.extractor import DomainExtractor, normalize_domain_candidate
     HAS_ML_EXTRACTOR = True
@@ -42,18 +41,18 @@ except Exception as e:
     HAS_ML_EXTRACTOR = False
 
 # ---------------------------------------------------------------------------
-# CONFIGURAÇÃO GLOBAL
+# GLOBAL CONFIGURATION
 # ---------------------------------------------------------------------------
 
-# Caminhos do sistema
+# System file paths
 UNBOUND_CONF_PATH = Path("/etc/unbound/unbound.conf.d/threat_feed.conf")
 DATABASE_PATH = Path("/home/pserver/dnsthreat/data/telemetry.db")
 
-# IP de sinkhole — deteção dinâmica do IP da interface de rede ativa
-# Utiliza socket UDP para 8.8.8.8:80 (sem enviar tráfego) para identificar
-# automaticamente o IP local atribuído pela rede Wi-Fi/Ethernet atual.
+# Sinkhole IP — dynamic detection of active network interface IP
+# Uses UDP socket to 8.8.8.8:80 (without sending traffic) to identify
+# the local IP assigned to the active network interface.
 def get_local_ip() -> str:
-    """Deteta dinamicamente o IP IPv4 local da interface de rede ativa."""
+    """Dynamically detects the local IPv4 address of the active network interface."""
     import socket
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -65,12 +64,12 @@ def get_local_ip() -> str:
 
 SINKHOLE_IP = get_local_ip()
 
-# Timeouts e comportamento de rede
+# Network behavior and timeouts
 REQUEST_TIMEOUT_SECONDS = 30
 REQUEST_RETRY_ATTEMPTS = 3
 REQUEST_RETRY_DELAY_SECONDS = 5
 
-# Cabeçalho HTTP para identificar o script
+# HTTP User-Agent header for OSINT feeds
 HTTP_HEADERS = {
     "User-Agent": (
         "DNSThreat-SyncBot/2.0 (SecOps Threat Intelligence Sync; "
@@ -78,33 +77,33 @@ HTTP_HEADERS = {
     )
 }
 
-# Expressão regular para validar um FQDN (Fully Qualified Domain Name)
-# Extrai apenas domínios válidos; ignora IPs, comentários, linhas vazias
+# Regular expression to validate a Fully Qualified Domain Name (FQDN)
+# Extracts valid domains while ignoring IPs, comments, and empty lines
 FQDN_REGEX = re.compile(
     r"""
-    (?:https?://)?                          # Protocolo opcional (http/https)
-    (?:[a-zA-Z0-9_\-]+\.)+                  # Sub-domínios + ponto separador
+    (?:https?://)?                          # Optional protocol scheme
+    (?:[a-zA-Z0-9_\-]+\.)+                  # Subdomains + dot separator
     (?:
-        xn--[a-zA-Z0-9]+                    # IDN (internationalised domain)
-        |[a-zA-Z]{2,63}                     # TLD standard (2-63 chars)
+        xn--[a-zA-Z0-9]+                    # IDN (internationalized domain)
+        |[a-zA-Z]{2,63}                     # Standard TLD (2-63 chars)
     )
-    (?:/[^\s]*)?                            # Path opcional (descartado)
+    (?:/[^\s]*)?                            # Optional URL path (discarded)
     """,
     re.VERBOSE,
 )
 
-# Regex para detectar endereços IPv4 (para exclusão explícita)
+# Regex to detect IPv4 addresses (for explicit exclusion)
 IPV4_REGEX = re.compile(
     r"^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}"
     r"(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$"
 )
 
 # ---------------------------------------------------------------------------
-# LOGGING
+# LOGGING SETUP
 # ---------------------------------------------------------------------------
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
-    """Configura o sistema de logging com formatação profissional."""
+    """Configures structured logging with ISO timestamps and log levels."""
     log_level = logging.DEBUG if verbose else logging.INFO
     log_format = "%(asctime)s [%(levelname)-8s] %(name)s — %(message)s"
     logging.basicConfig(
@@ -117,12 +116,12 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
 
 
 # ---------------------------------------------------------------------------
-# ESTRUTURAS DE DADOS
+# DATA STRUCTURES
 # ---------------------------------------------------------------------------
 
 @dataclass
 class IoCEntry:
-    """Representa um único Indicador de Compromisso (IoC) extraído."""
+    """Represents a single extracted Indicator of Compromise (IoC)."""
     domain: str
     source_tag: str
     category: str = "Malware / C2"
@@ -130,7 +129,13 @@ class IoCEntry:
 
 @dataclass
 class FeedResult:
-    """Resultado do processamento de uma fonte de IoCs."""
+    """Execution outcome from processing a threat intelligence feed."""
+    source_name: str
+    domains_found: int = 0
+    domains_valid: int = 0
+    error: Optional[str] = None
+    duration_seconds: float = 0.0
+    iocs: list = field(default_factory=list)
     source_name: str
     domains_found: int = 0
     domains_valid: int = 0
@@ -140,89 +145,82 @@ class FeedResult:
 
 
 # ---------------------------------------------------------------------------
-# CLASSES BASE — PADRÃO STRATEGY PARA FONTES DE IoCs
+# BASE CLASSES — STRATEGY PATTERN FOR THREAT INTELLIGENCE SOURCES
 # ---------------------------------------------------------------------------
 
 class BaseTextFeed(ABC):
-    """
-    Classe base abstracta para fontes de IoCs baseadas em texto plano.
+    """Abstract base class for plain-text threat intelligence sources.
 
-    Todas as fontes de texto (sem API key) devem herdar desta classe
-    e implementar os métodos `url`, `source_tag` e `category`.
+    All public text-based feeds (without API keys) inherit from this class
+    and implement `url`, `source_tag`, and `category`.
 
-    Para adicionar uma nova fonte de texto:
-        1. Cria uma subclasse de BaseTextFeed
-        2. Define `url`, `source_tag` e `category`
-        3. (Opcional) Override de `parse_line` para lógica custom
-        4. Adiciona a instância à lista ACTIVE_TEXT_FEEDS
-
-    Para adicionar uma fonte baseada em API (ThreatFox, OTX, etc.):
-        1. Cria uma subclasse de BaseApiFeed (ver secção abaixo)
-        2. Implementa `fetch_raw` com a lógica de autenticação/paginação
-        3. Adiciona a instância à lista ACTIVE_API_FEEDS
+    To add a new plain-text source:
+        1. Subclass BaseTextFeed
+        2. Define `url`, `source_tag`, and `category`
+        3. (Optional) Override `parse_line` for custom parsing logic
+        4. Append instance to ACTIVE_TEXT_FEEDS registry
     """
 
     @property
     @abstractmethod
     def url(self) -> str:
-        """URL pública da lista de IoCs em texto plano."""
+        """Public URL of the plain-text IoC feed."""
         ...
 
     @property
     @abstractmethod
     def source_tag(self) -> str:
-        """Tag identificadora da fonte (persiste na BD)."""
+        """Identifying tag for the source (persisted in SQLite)."""
         ...
 
     @property
     @abstractmethod
     def category(self) -> str:
-        """Categoria de ameaça predominante nesta fonte."""
+        """Primary threat category for this feed."""
         ...
 
     def parse_line(self, line: str) -> Optional[str]:
-        """
-        Extrai um FQDN válido de uma linha de texto.
+        """Extracts a valid FQDN from a line of feed text.
 
-        Lógica padrão (pode ser sobrescrita por subclasses):
-            - Ignora linhas vazias ou comentários (#)
-            - Extrai o domínio via regex FQDN
-            - Rejeita endereços IPv4
+        Default parsing pipeline:
+            - Discards empty lines and comment headers (#)
+            - Extracts candidate domain via FQDN regex
+            - Rejects IPv4 addresses and single-label hosts
 
         Args:
-            line: Linha de texto bruto da fonte
+            line: Raw text line from feed payload
 
         Returns:
-            FQDN em minúsculas se válido, None caso contrário
+            Normalized lowercase FQDN if valid, None otherwise
         """
         line = line.strip()
 
-        # Ignora linhas vazias e comentários
+        # Ignore empty lines and comment headers
         if not line or line.startswith("#"):
             return None
 
-        # Tenta extrair um FQDN válido da linha
+        # Attempt extracting valid FQDN match
         match = FQDN_REGEX.search(line)
         if not match:
             return None
 
         raw = match.group(0)
 
-        # Remove protocolo se presente
+        # Strip protocol scheme if present
         raw = re.sub(r"^https?://", "", raw)
 
-        # Extrai apenas o host (remove path)
+        # Extract hostname only (discard path/query)
         domain = raw.split("/")[0].strip().lower()
 
-        # Rejeita se for um IP puro
+        # Reject pure IP addresses
         if IPV4_REGEX.match(domain):
             return None
 
-        # Rejeita domínios com menos de 4 caracteres (inválidos)
+        # Reject domains shorter than 4 characters or without dots
         if len(domain) < 4 or "." not in domain:
             return None
 
-        # Rejeita localhost e loopbacks
+        # Reject localhost and loopback domains
         if domain in ("localhost", "localhost.localdomain"):
             return None
 
@@ -233,15 +231,14 @@ class BaseTextFeed(ABC):
         session: requests.Session,
         logger: logging.Logger,
     ) -> FeedResult:
-        """
-        Descarrega e processa a feed de IoCs com retry automático.
+        """Downloads and processes threat feed with automated retries.
 
         Args:
-            session: Sessão HTTP reutilizável (requests.Session)
-            logger:  Logger do módulo principal
+            session: Reusable HTTP connection pool (requests.Session)
+            logger:  Logger instance for structured tracing
 
         Returns:
-            FeedResult com os IoCs extraídos e estatísticas
+            FeedResult populated with extracted IoC entries and performance metrics
         """
         result = FeedResult(source_name=self.source_tag)
         start_time = time.monotonic()
@@ -249,7 +246,7 @@ class BaseTextFeed(ABC):
         for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
             try:
                 logger.info(
-                    "  [%s] A descarregar (tentativa %d/%d): %s",
+                    "  [%s] Fetching (attempt %d/%d): %s",
                     self.source_tag, attempt, REQUEST_RETRY_ATTEMPTS, self.url,
                 )
                 response = session.get(
@@ -281,24 +278,24 @@ class BaseTextFeed(ABC):
 
                 result.domains_valid = len(result.iocs)
                 logger.info(
-                    "[%s] Processado: %d linhas -> %d dominios validos",
+                    "[%s] Processed: %d lines -> %d valid domains",
                     self.source_tag, result.domains_found, result.domains_valid,
                 )
-                break  # Sucesso — sai do loop de retry
+                break  # Successful fetch, exit retry loop
 
             except requests.exceptions.Timeout:
-                result.error = f"Timeout apos {REQUEST_TIMEOUT_SECONDS}s"
+                result.error = f"Timeout after {REQUEST_TIMEOUT_SECONDS}s"
                 logger.warning(
-                    "[%s] Timeout na tentativa %d/%d",
+                    "[%s] Timeout on attempt %d/%d",
                     self.source_tag, attempt, REQUEST_RETRY_ATTEMPTS,
                 )
                 if attempt < REQUEST_RETRY_ATTEMPTS:
                     time.sleep(REQUEST_RETRY_DELAY_SECONDS)
 
             except requests.exceptions.ConnectionError as exc:
-                result.error = f"Erro de ligacao: {exc}"
+                result.error = f"Connection error: {exc}"
                 logger.warning(
-                    "[%s] Erro de ligacao na tentativa %d/%d: %s",
+                    "[%s] Connection error on attempt %d/%d: %s",
                     self.source_tag, attempt, REQUEST_RETRY_ATTEMPTS, exc,
                 )
                 if attempt < REQUEST_RETRY_ATTEMPTS:
@@ -307,14 +304,14 @@ class BaseTextFeed(ABC):
             except requests.exceptions.HTTPError as exc:
                 result.error = f"HTTP {exc.response.status_code}: {exc}"
                 logger.error(
-                    "[%s] HTTP Error %s — fonte ignorada",
+                    "[%s] HTTP Error %s — skipping feed",
                     self.source_tag, exc.response.status_code,
                 )
-                break  # Erro HTTP permanente — não retry
+                break  # Permanent HTTP error, do not retry
 
             except requests.exceptions.RequestException as exc:
                 result.error = str(exc)
-                logger.error("[%s] Erro inesperado: %s", self.source_tag, exc)
+                logger.error("[%s] Unexpected request error: %s", self.source_tag, exc)
                 break
 
         result.duration_seconds = time.monotonic() - start_time
@@ -322,20 +319,14 @@ class BaseTextFeed(ABC):
 
 
 class BaseApiFeed(ABC):
-    """
-    Classe base abstracta para fontes de IoCs baseadas em API autenticada.
+    """Abstract base class for authenticated API-based threat feeds.
 
-    Estrutura preparada para integração futura. Para implementar:
-        1. Define `source_tag`, `category`, `api_key_env_var`
-        2. Implementa `fetch_raw(session, api_key)` com a lógica da API
-        3. Implementa `parse_response(raw)` para extrair domínios
-        4. Adiciona a instância à lista ACTIVE_API_FEEDS no final do ficheiro
-
-    Fontes previstas:
-        - ThreatFoxFeed    (THREATFOX_API_KEY)
-        - AlienVaultFeed   (OTX_API_KEY)
-        - AbuseIPDBFeed    (ABUSEIPDB_API_KEY)
-        - MalwareBazaarFeed(sem key, mas com endpoint JSON específico)
+    Provides a template for authenticated endpoints (ThreatFox, AlienVault, AbuseIPDB).
+    To implement:
+        1. Define `source_tag`, `category`, and `api_key_env_var`
+        2. Implement `fetch_raw(session, api_key)` with endpoint logic
+        3. Implement `parse_response(raw)` returning normalized IoCEntry objects
+        4. Append instance to ACTIVE_API_FEEDS registry
     """
 
     @property
@@ -349,17 +340,17 @@ class BaseApiFeed(ABC):
     @property
     @abstractmethod
     def api_key_env_var(self) -> str:
-        """Nome da variável de ambiente que contém a API key."""
+        """Environment variable name containing the authentication API key."""
         ...
 
     @abstractmethod
     def fetch_raw(self, session: requests.Session, api_key: str) -> list:
-        """Efectua o pedido à API e retorna lista de IoCs brutos."""
+        """Performs authenticated HTTP request returning raw feed payload."""
         ...
 
     @abstractmethod
     def parse_response(self, raw: list) -> list:
-        """Converte a resposta bruta da API em IoCEntry normalizados."""
+        """Parses raw API response payload into normalized IoCEntry items."""
         ...
 
     def fetch(
@@ -398,13 +389,13 @@ class BaseApiFeed(ABC):
 
 
 # ---------------------------------------------------------------------------
-# IMPLEMENTAÇÕES — FONTES DE TEXTO PLANO ACTIVAS
+# IMPLEMENTATIONS — ACTIVE PLAIN-TEXT THREAT FEEDS
 # ---------------------------------------------------------------------------
 
 class URLhausFeed(BaseTextFeed):
-    """
-    URLhaus (abuse.ch) — Lista de URLs activas de distribuição de malware.
-    Formato: Uma URL por linha, com comentários (#) no cabeçalho.
+    """URLhaus (abuse.ch) — Active malware distribution URL feed.
+
+    Format: One URL per line with comment headers (#).
     URL: https://urlhaus.abuse.ch/downloads/text/
     """
 
@@ -421,19 +412,16 @@ class URLhausFeed(BaseTextFeed):
         return "Malware Distribution"
 
     def parse_line(self, line: str) -> Optional[str]:
-        """URLhaus emite linhas do tipo: http://malware.com/payload.exe"""
+        """URLhaus emits lines formatted as: http://malware.com/payload.exe"""
         line = line.strip()
         if not line or line.startswith("#"):
             return None
-        # Cada linha é uma URL completa — usa lógica base
         return super().parse_line(line)
 
 
 class FeodoTrackerFeed(BaseTextFeed):
-    """
-    Feodo Tracker (abuse.ch) — C2 de botnets (Emotet, TrickBot, Dridex, QakBot).
-    Nota: A lista oficial actual do Feodo Tracker emite IPs activos de C2
-    (ipblocklist_recommended.txt / ipblocklist.txt).
+    """Feodo Tracker (abuse.ch) — Botnet C2 servers (Emotet, TrickBot, QakBot).
+
     URL: https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt
     """
 
@@ -451,9 +439,8 @@ class FeodoTrackerFeed(BaseTextFeed):
 
 
 class OpenPhishFeed(BaseTextFeed):
-    """
-    OpenPhish — Feed gratuita de URLs de phishing activos.
-    Formato: Uma URL por linha.
+    """OpenPhish — Free community feed of active phishing URLs.
+
     URL: https://openphish.com/feed.txt
     """
 
@@ -471,10 +458,8 @@ class OpenPhishFeed(BaseTextFeed):
 
 
 class SpamHausDROPFeed(BaseTextFeed):
-    """
-    Spamhaus DROP (Don't Route Or Peer) — Redes controladas por criminosos.
-    Nota: Lista maioritariamente de IPs/CIDRs. FQDNs serão extraídos se
-    presentes; IPs e CIDRs são ignorados pelo regex FQDN.
+    """Spamhaus DROP (Don't Route Or Peer) — Criminal-controlled IP/domain ranges.
+
     URL: https://www.spamhaus.org/drop/drop.txt
     """
 
@@ -491,21 +476,17 @@ class SpamHausDROPFeed(BaseTextFeed):
         return "Spam / Criminal Network"
 
     def parse_line(self, line: str) -> Optional[str]:
-        """
-        SpamHaus DROP emite CIDRs (ex: 1.2.3.0/24 ; SBL123).
-        Ignora IPs/CIDRs; extrai apenas FQDNs se presentes.
-        """
+        """SpamHaus DROP emits CIDRs and domains (e.g. 1.2.3.0/24 ; SBL123)."""
         line = line.strip()
         if not line or line.startswith(";"):
             return None
-        # Remove anotações do tipo "; SBL123"
         line = line.split(";")[0].strip()
         return super().parse_line(line)
 
 
 class SpamHausEDROPFeed(BaseTextFeed):
-    """
-    Spamhaus EDROP (Extended DROP) — Redes secundárias controladas por criminosos.
+    """Spamhaus EDROP (Extended DROP) — Secondary criminal-controlled ranges.
+
     URL: https://www.spamhaus.org/drop/edrop.txt
     """
 
@@ -522,7 +503,6 @@ class SpamHausEDROPFeed(BaseTextFeed):
         return "Spam / Criminal Network"
 
     def parse_line(self, line: str) -> Optional[str]:
-        """Mesmo formato que DROP — remove anotações '; SBL'."""
         line = line.strip()
         if not line or line.startswith(";"):
             return None
@@ -531,8 +511,8 @@ class SpamHausEDROPFeed(BaseTextFeed):
 
 
 class CINSArmyFeed(BaseTextFeed):
-    """
-    CINS Army List (Sentinel IPS) — IPs/domínios de reputação negativa activa.
+    """CINS Army List (Sentinel IPS) — Active malicious reputation IPs and hosts.
+
     URL: https://cinsscore.com/list/ci-badguys.txt
     """
 
@@ -550,130 +530,22 @@ class CINSArmyFeed(BaseTextFeed):
 
 
 # ---------------------------------------------------------------------------
-# IMPLEMENTAÇÕES FUTURAS — FONTES BASEADAS EM API (ESQUELETOS COMENTADOS)
+# FUTURE IMPLEMENTATIONS — API-BASED THREAT FEEDS (COMMENTED SKELETONS)
 # ---------------------------------------------------------------------------
 #
-# NOTA PARA O PROGRAMADOR:
-# Descomenta e preenche cada classe quando tiveres as respectivas API keys.
-# Define as variáveis de ambiente antes de executar:
+# DEVELOPER NOTE:
+# Uncomment and implement each class when API keys are available.
+# Export corresponding environment variables prior to execution:
 #   export THREATFOX_API_KEY="..."
 #   export OTX_API_KEY="..."
 #   export ABUSEIPDB_API_KEY="..."
-#
-# class ThreatFoxFeed(BaseApiFeed):
-#     """ThreatFox (abuse.ch) — IoC database com contexto de malware."""
-#     @property
-#     def source_tag(self) -> str: return "ThreatFox"
-#     @property
-#     def category(self) -> str: return "Malware IoC"
-#     @property
-#     def api_key_env_var(self) -> str: return "THREATFOX_API_KEY"
-#
-#     def fetch_raw(self, session, api_key):
-#         resp = session.post(
-#             "https://threatfox-api.abuse.ch/api/v1/",
-#             json={"query": "get_iocs", "days": 1},
-#             headers={**HTTP_HEADERS, "Auth-Key": api_key},
-#             timeout=REQUEST_TIMEOUT_SECONDS,
-#         )
-#         resp.raise_for_status()
-#         return resp.json().get("data", [])
-#
-#     def parse_response(self, raw):
-#         iocs = []
-#         for item in raw:
-#             ioc_value = item.get("ioc_value", "")
-#             if item.get("ioc_type") == "domain" and ioc_value:
-#                 iocs.append(IoCEntry(ioc_value.lower(), self.source_tag, self.category))
-#         return iocs
-#
-#
-# class AlienVaultOTXFeed(BaseApiFeed):
-#     """AlienVault OTX — Open Threat Exchange com pulsos da comunidade."""
-#     @property
-#     def source_tag(self) -> str: return "AlienVault OTX"
-#     @property
-#     def category(self) -> str: return "Community Threat Intel"
-#     @property
-#     def api_key_env_var(self) -> str: return "OTX_API_KEY"
-#
-#     def fetch_raw(self, session, api_key):
-#         resp = session.get(
-#             "https://otx.alienvault.com/api/v1/indicators/export"
-#             "?type=domain&modified_since=1d",
-#             headers={**HTTP_HEADERS, "X-OTX-API-KEY": api_key},
-#             timeout=REQUEST_TIMEOUT_SECONDS,
-#         )
-#         resp.raise_for_status()
-#         return resp.text.splitlines()
-#
-#     def parse_response(self, raw):
-#         iocs = []
-#         for line in raw:
-#             line = line.strip()
-#             if line and not line.startswith("#"):
-#                 iocs.append(IoCEntry(line.lower(), self.source_tag, self.category))
-#         return iocs
-#
-#
-# class AbuseIPDBFeed(BaseApiFeed):
-#     """AbuseIPDB — Blacklist de IPs com histórico de comportamento abusivo."""
-#     @property
-#     def source_tag(self) -> str: return "AbuseIPDB"
-#     @property
-#     def category(self) -> str: return "Abusive IP"
-#     @property
-#     def api_key_env_var(self) -> str: return "ABUSEIPDB_API_KEY"
-#
-#     def fetch_raw(self, session, api_key):
-#         resp = session.get(
-#             "https://api.abuseipdb.com/api/v2/blacklist",
-#             headers={**HTTP_HEADERS, "Key": api_key, "Accept": "text/plain"},
-#             params={"confidenceMinimum": 90},
-#             timeout=REQUEST_TIMEOUT_SECONDS,
-#         )
-#         resp.raise_for_status()
-#         return resp.text.splitlines()
-#
-#     def parse_response(self, raw):
-#         # AbuseIPDB emite IPs — nao aplicavel ao sinkhole DNS directamente.
-#         # Implementa PTR lookup ou correlacao se necessario no futuro.
-#         return []
-#
-#
-# class MalwareBazaarFeed(BaseApiFeed):
-#     """MalwareBazaar (abuse.ch) — Amostras de malware com C2 domains."""
-#     @property
-#     def source_tag(self) -> str: return "MalwareBazaar"
-#     @property
-#     def category(self) -> str: return "Malware Sample C2"
-#     @property
-#     def api_key_env_var(self) -> str: return "MALWAREBAZAAR_API_KEY"
-#
-#     def fetch_raw(self, session, api_key):
-#         resp = session.post(
-#             "https://mb-api.abuse.ch/api/v1/",
-#             data={"query": "get_recent", "selector": "time"},
-#             headers={**HTTP_HEADERS, "API-KEY": api_key},
-#             timeout=REQUEST_TIMEOUT_SECONDS,
-#         )
-#         resp.raise_for_status()
-#         return resp.json().get("data", [])
-#
-#     def parse_response(self, raw):
-#         iocs = []
-#         for sample in raw:
-#             for domain in sample.get("domains", []):
-#                 if domain:
-#                     iocs.append(IoCEntry(domain.lower(), self.source_tag, self.category))
-#         return iocs
 
 
 # ---------------------------------------------------------------------------
-# REGISTOS DE FONTES ACTIVAS
+# ACTIVE FEED REGISTRIES
 # ---------------------------------------------------------------------------
 
-#: Fontes de texto activas — adiciona/remove instâncias conforme necessário
+#: Active text feeds — append/remove instances as needed
 ACTIVE_TEXT_FEEDS: list = [
     URLhausFeed(),
     FeodoTrackerFeed(),
@@ -683,7 +555,7 @@ ACTIVE_TEXT_FEEDS: list = [
     CINSArmyFeed(),
 ]
 
-#: Fontes de API activas — descomenta as classes acima e adiciona aqui
+#: Active API feeds — uncomment classes above and add here
 ACTIVE_API_FEEDS: list = [
     # ThreatFoxFeed(),
     # AlienVaultOTXFeed(),
@@ -693,23 +565,20 @@ ACTIVE_API_FEEDS: list = [
 
 
 # ---------------------------------------------------------------------------
-# MOTOR DE DOWNLOAD — ORCHESTRATOR
+# DOWNLOAD ENGINE — ORCHESTRATOR
 # ---------------------------------------------------------------------------
 
 def collect_all_iocs(logger: logging.Logger) -> tuple:
-    """
-    Executa todas as feeds activas e consolida os IoCs.
+    """Executes all active feeds and consolidates unique threat IoCs.
 
-    Utiliza um requests.Session partilhado para reutilização de ligações TCP
-    (connection pooling), melhorando performance em múltiplos downloads.
+    Uses a shared requests.Session for TCP connection pooling, improving
+    performance across multiple remote feed downloads.
 
     Args:
-        logger: Logger do módulo principal
+        logger: Main logger instance
 
     Returns:
         Tuple (unique_domains: set, all_iocs: list[IoCEntry])
-        - unique_domains: set de FQDNs únicos para escrita no Unbound
-        - all_iocs: lista completa de IoCEntry (com metadados de fonte)
     """
     all_iocs: list = []
     unique_domains: set = set()
@@ -722,7 +591,7 @@ def collect_all_iocs(logger: logging.Logger) -> tuple:
 
     logger.info("=" * 65)
     logger.info("DNS Sinkhole — Threat Intelligence Sync Engine v2.0")
-    logger.info("Fontes activas: %d | Sinkhole IP: %s", total_feeds, SINKHOLE_IP)
+    logger.info("Active feeds: %d | Sinkhole IP: %s", total_feeds, SINKHOLE_IP)
     logger.info("=" * 65)
 
     for idx, feed in enumerate(all_feeds, start=1):
@@ -732,7 +601,7 @@ def collect_all_iocs(logger: logging.Logger) -> tuple:
 
         if result.error and not result.iocs:
             logger.warning(
-                "[%s] Ignorado com erro: %s", feed.source_tag, result.error
+                "[%s] Skipped with error: %s", feed.source_tag, result.error
             )
             continue
 
@@ -740,15 +609,13 @@ def collect_all_iocs(logger: logging.Logger) -> tuple:
             if ioc.domain not in unique_domains:
                 unique_domains.add(ioc.domain)
                 all_iocs.append(ioc)
-            # Domínios duplicados de fontes diferentes são descartados silenciosamente
-            # (o primeiro a chegar fica registado com a sua fonte de origem)
 
     session.close()
 
-    # Aplica filtragem por allowlist (ML/Threat Intel) para evitar falsos positivos
+    # Apply allowlist filtering (ML/Threat Intel) to avoid false positives
     if HAS_ML_EXTRACTOR:
         logger.info("-" * 65)
-        logger.info("A aplicar Allowlist do modulo de Machine Learning / Threat Intel...")
+        logger.info("Applying Machine Learning / Threat Intel Allowlist...")
         try:
             data_dir = DATABASE_PATH.parent
             extractor = DomainExtractor(auto_load_data_dir=True, data_dir=data_dir)
@@ -758,24 +625,24 @@ def collect_all_iocs(logger: logging.Logger) -> tuple:
                 is_allowed, rule = extractor.allowlist.is_allowed(ioc.domain)
                 if is_allowed:
                     allowed_count += 1
-                    logger.debug("Allowlist ignorou: %s (regra: %s)", ioc.domain, rule)
+                    logger.debug("Allowlist excluded: %s (rule: %s)", ioc.domain, rule)
                 else:
                     filtered_iocs.append(ioc)
 
             all_iocs = filtered_iocs
             unique_domains = {ioc.domain for ioc in all_iocs}
-            logger.info("Allowlist filtrou %d dominios legitimos/falsos positivos.", allowed_count)
+            logger.info("Allowlist filtered out %d legitimate/false-positive domains.", allowed_count)
         except Exception as exc:
-            logger.warning("Falha ao aplicar allowlist: %s — prosseguindo com dados originais.", exc)
+            logger.warning("Failed to apply allowlist: %s — proceeding with raw data.", exc)
 
     logger.info("=" * 65)
-    logger.info("Total de dominios unicos consolidados: %d", len(unique_domains))
+    logger.info("Total consolidated unique domains: %d", len(unique_domains))
 
     return unique_domains, all_iocs
 
 
 # ---------------------------------------------------------------------------
-# GERAÇÃO DA CONFIGURAÇÃO UNBOUND
+# UNBOUND CONFIGURATION GENERATOR
 # ---------------------------------------------------------------------------
 
 def generate_unbound_config(
@@ -785,35 +652,30 @@ def generate_unbound_config(
     logger: logging.Logger,
     dry_run: bool = False,
 ) -> None:
-    """
-    Gera e escreve o ficheiro de configuração do Unbound DNS Sinkhole.
+    """Generates and writes Unbound DNS sinkhole configuration file.
 
-    Formato estrito exigido pelo Unbound:
+    Format required by Unbound:
         server:
-            local-zone: "dominio.com" redirect
-            local-data: "dominio.com A 10.0.2.15"
+            local-zone: "domain.com" redirect
+            local-data: "domain.com A 10.0.2.15"
 
     Args:
-        domains:     Set de FQDNs únicos a bloquear
-        sinkhole_ip: IP de destino do sinkhole (ex: 10.0.2.15)
-        output_path: Caminho do ficheiro de configuração Unbound
-        logger:      Logger do módulo principal
-        dry_run:     Se True, imprime no stdout sem escrever no disco
+        domains:     Set of unique FQDNs to block
+        sinkhole_ip: Destination IP for sinkhole redirection
+        output_path: Destination path for Unbound configuration
+        logger:      Logger instance
+        dry_run:     If True, prints preview without writing to disk
     """
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # Cabeçalho com comentários + diretiva server: obrigatória
-    # NOTA: NÃO incluir interface:, access-control: ou outras diretivas de rede
-    # pois essas configurações já existem em /etc/unbound/unbound.conf principal.
-    # Este ficheiro contém APENAS regras de redirecionamento local-zone/local-data.
     header = (
         f"# ============================================================\n"
         f"# DNS Sinkhole — Threat Intelligence Block List\n"
-        f"# Gerado automaticamente por sync_iocs.py\n"
-        f"# Data: {timestamp}\n"
-        f"# Total de dominios: {len(domains)}\n"
+        f"# Automatically generated by sync_iocs.py\n"
+        f"# Timestamp: {timestamp}\n"
+        f"# Total domains: {len(domains)}\n"
         f"# Sinkhole IP: {sinkhole_ip}\n"
-        f"# NAO EDITES ESTE FICHEIRO MANUALMENTE — Sera sobrescrito!\n"
+        f"# DO NOT EDIT MANUALLY — Overwritten on each sync cycle!\n"
         f"# ============================================================\n\n"
         f"server:\n"
     )
@@ -827,34 +689,34 @@ def generate_unbound_config(
 
     if dry_run:
         logger.info(
-            "[DRY-RUN] Configuracao Unbound (primeiras 40 linhas):\n%s",
+            "[DRY-RUN] Unbound configuration preview (first 40 lines):\n%s",
             "\n".join(config_content.splitlines()[:40]),
         )
-        logger.info("[DRY-RUN] Ficheiro NAO escrito. Caminho seria: %s", output_path)
+        logger.info("[DRY-RUN] File NOT written. Target path would be: %s", output_path)
         return
 
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(config_content, encoding="utf-8")
         logger.info(
-            "Configuracao Unbound escrita: %s (%d dominios)",
+            "Unbound configuration written: %s (%d domains)",
             output_path, len(domains),
         )
     except PermissionError as exc:
         logger.critical(
-            "PERMISSAO NEGADA ao escrever em %s\n"
-            "Execute o script com: sudo python3 sync_iocs.py\n"
-            "Detalhe: %s",
+            "PERMISSION DENIED writing to %s\n"
+            "Run script with: sudo python3 sync_iocs.py\n"
+            "Detail: %s",
             output_path, exc,
         )
         sys.exit(1)
     except OSError as exc:
-        logger.critical("Erro de I/O ao escrever configuracao: %s", exc)
+        logger.critical("I/O error writing configuration: %s", exc)
         sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# PERSISTÊNCIA NA BASE DE DADOS SQLITE
+# SQLITE DATABASE PERSISTENCE
 # ---------------------------------------------------------------------------
 
 def persist_iocs_to_database(
@@ -863,35 +725,30 @@ def persist_iocs_to_database(
     logger: logging.Logger,
     dry_run: bool = False,
 ) -> None:
-    """
-    Persiste os IoCs na base de dados SQLite de telemetria.
+    """Persists threat IoCs to SQLite database in atomic transaction.
 
-    Operações executadas em transação atómica:
-        1. Garante que a tabela `ioc_entries` existe (CREATE IF NOT EXISTS)
-        2. Limpa todas as entradas anteriores (DELETE — sync completo)
-        3. Insere todos os novos domínios com fonte e categoria em batch
-        4. Em caso de erro, faz rollback completo
-
-    A coluna `category` recebe o formato "SOURCE | CATEGORY" para preservar
-    a rastreabilidade da fonte de origem, compatível com o schema existente.
+    Operations:
+        1. Ensures `ioc_entries` table exists
+        2. Clears previous entries (full synchronization)
+        3. Inserts all newly extracted domains in batch
+        4. Rolls back on error
 
     Args:
-        iocs:     Lista de IoCEntry com metadados completos
-        db_path:  Caminho absoluto para o ficheiro SQLite
-        logger:   Logger do módulo principal
-        dry_run:  Se True, simula sem escrever na BD
+        iocs:     List of IoCEntry items with metadata
+        db_path:  Absolute path to SQLite database file
+        logger:   Logger instance
+        dry_run:  If True, simulates without modifying database
     """
     if dry_run:
         logger.info(
-            "[DRY-RUN] Base de dados NAO modificada. "
-            "Seriam inseridos %d registos em %s", len(iocs), db_path,
+            "[DRY-RUN] Database NOT modified. "
+            "Would insert %d records in %s", len(iocs), db_path,
         )
         return
 
     if not db_path.exists():
         logger.warning(
-            "Base de dados nao encontrada em %s\n"
-            "Certifica-te que a aplicacao FastAPI foi iniciada pelo menos uma vez (init_db).",
+            "Database file not found at %s. Ensure FastAPI was initialized at least once.",
             db_path,
         )
 
@@ -902,15 +759,15 @@ def persist_iocs_to_database(
             check_same_thread=False,
         )
 
-        # Configura WAL mode e parametros de concorrencia
+        # Configure WAL mode and concurrency pragmas
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
         conn.execute("PRAGMA busy_timeout=10000;")
 
-        with conn:  # Transacao atomica — commit ou rollback automatico
+        with conn:  # Atomic transaction — auto commit or rollback
             cursor = conn.cursor()
 
-            # 1. Garante que a tabela existe (idempotente)
+            # 1. Ensure table exists (idempotent)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ioc_entries (
                     domain     TEXT PRIMARY KEY,
@@ -920,12 +777,12 @@ def persist_iocs_to_database(
                 );
             """)
 
-            # 2. Limpa entradas anteriores (sync completo, nao incremental)
+            # 2. Clear old entries (full sync)
             cursor.execute("DELETE FROM ioc_entries;")
             deleted_count = cursor.rowcount
-            logger.info("BD: %d entradas antigas removidas", deleted_count)
+            logger.info("DB: %d old entries removed", deleted_count)
 
-            # 3. Prepara dados — formata categoria como "Source | Category"
+            # 3. Format category as 'Source | Category'
             utc_now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             records = [
                 (
@@ -937,7 +794,7 @@ def persist_iocs_to_database(
                 for ioc in iocs
             ]
 
-            # 4. Inserção em lote (batch insert) — eficiente para grandes volumes
+            # 4. Batch insert for optimal performance
             cursor.executemany(
                 """
                 INSERT OR REPLACE INTO ioc_entries
@@ -946,7 +803,7 @@ def persist_iocs_to_database(
                 """,
                 records,
             )
-            logger.info("BD: %d IoCs inseridos em %s", len(records), db_path)
+            logger.info("DB: %d IoCs inserted into %s", len(records), db_path)
 
         conn.close()
 
@@ -954,66 +811,54 @@ def persist_iocs_to_database(
         err_str = str(exc).lower()
         if "unable to open database" in err_str:
             logger.error(
-                "BD: Nao foi possivel abrir a base de dados em %s\n"
-                "Verifica permissoes e se o caminho existe.\n"
-                "Detalhe: %s",
+                "DB: Unable to open database at %s. Verify permissions. Detail: %s",
                 db_path, exc,
             )
         elif "database is locked" in err_str:
             logger.error(
-                "BD: Base de dados bloqueada (locked).\n"
-                "Outro processo esta a usar o SQLite. Aguarda e tenta novamente.\n"
-                "Detalhe: %s",
-                exc,
+                "DB: Database is locked by another process. Detail: %s", exc
             )
         else:
-            logger.error("BD: Erro operacional SQLite: %s", exc)
+            logger.error("DB: SQLite operational error: %s", exc)
 
     except sqlite3.DatabaseError as exc:
-        logger.error(
-            "BD: Erro critico na base de dados: %s\n"
-            "Possivel corrupcao. Verifica com: sqlite3 %s 'PRAGMA integrity_check;'",
-            exc, db_path,
-        )
+        logger.error("DB: Database integrity error: %s", exc)
 
     except PermissionError as exc:
         logger.critical(
-            "BD: PERMISSAO NEGADA ao aceder a %s\n"
-            "Execute com sudo ou ajusta permissoes: chmod 664 %s\n"
-            "Detalhe: %s",
-            db_path, db_path, exc,
+            "DB: PERMISSION DENIED accessing %s. Run with sudo: %s",
+            db_path, exc,
         )
 
 
 # ---------------------------------------------------------------------------
-# RESTART DO SERVIÇO UNBOUND
+# UNBOUND SERVICE RESTART
 # ---------------------------------------------------------------------------
 
 def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> bool:
-    """
-    Reinicia o serviço Unbound via systemctl para aplicar a nova configuração.
+    """Restarts Unbound service via systemctl to apply updated zone rules.
 
-    Fluxo de segurança:
-        1. Valida a configuração com `sudo unbound-checkconf`
-        2. Só reinicia se a configuração retornar código 0 (sem erros)
-        3. Em caso de configuração inválida, imprime o erro exato sem derrubar o serviço
+    Safety workflow:
+        1. Validates configuration syntax using `sudo unbound-checkconf`
+        2. Only restarts if exit code is 0 (syntax valid)
+        3. Prints exact error without disrupting running DNS resolver on failure
 
     Args:
-        logger:  Logger do módulo principal
-        dry_run: Se True, simula o comando sem executar
+        logger:  Logger instance
+        dry_run: If True, simulates without executing command
 
     Returns:
-        True se o restart foi bem sucedido, False caso contrário
+        True if restart succeeded, False otherwise
     """
     if dry_run:
         logger.info(
-            "[DRY-RUN] Comandos NAO executados: "
+            "[DRY-RUN] Commands NOT executed: "
             "unbound-checkconf + systemctl restart unbound"
         )
         return True
 
-    # 1. Valida a configuração ANTES de reiniciar (gate de segurança)
-    logger.info("A validar configuracao Unbound (sudo unbound-checkconf)...")
+    # 1. Validate configuration BEFORE restarting (safety gate)
+    logger.info("Validating Unbound configuration (sudo unbound-checkconf)...")
     try:
         check_result = subprocess.run(
             ["sudo", "unbound-checkconf"],
@@ -1023,25 +868,25 @@ def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> bool:
         )
         if check_result.returncode != 0:
             logger.critical(
-                "Configuracao Unbound INVALIDA — Restart CANCELADO!\n"
-                "O servico DNS NAO foi afetado (protecao ativa).\n"
-                "Saida: %s\n"
-                "Erros: %s",
+                "Unbound configuration INVALID — Restart CANCELLED!\n"
+                "DNS service unaffected (active protection).\n"
+                "Output: %s\n"
+                "Errors: %s",
                 check_result.stdout.strip(),
                 check_result.stderr.strip(),
             )
             return False
         logger.info(
-            "Configuracao valida: %s",
+            "Valid configuration: %s",
             check_result.stdout.strip() or "OK",
         )
     except FileNotFoundError:
-        logger.warning("`unbound-checkconf` nao encontrado — validacao ignorada.")
+        logger.warning("`unbound-checkconf` not found — syntax validation skipped.")
     except subprocess.TimeoutExpired:
-        logger.warning("Timeout na validacao da configuracao — continuando...")
+        logger.warning("Timeout validating configuration — continuing...")
 
-    # 2. Reinicia o serviço (apenas se a validação passou)
-    logger.info("A reiniciar servico Unbound...")
+    # 2. Restart service (only if validation passed)
+    logger.info("Restarting Unbound service...")
     try:
         result = subprocess.run(
             ["sudo", "systemctl", "restart", "unbound"],
@@ -1050,11 +895,11 @@ def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> bool:
             timeout=30,
         )
         if result.returncode == 0:
-            logger.info("Unbound reiniciado com sucesso.")
+            logger.info("Unbound restarted successfully.")
             return True
         else:
             logger.error(
-                "Falha ao reiniciar Unbound (exit code: %d)\n"
+                "Failed to restart Unbound (exit code: %d)\n"
                 "stdout: %s\n"
                 "stderr: %s",
                 result.returncode,
@@ -1064,43 +909,42 @@ def restart_unbound(logger: logging.Logger, dry_run: bool = False) -> bool:
             return False
     except FileNotFoundError:
         logger.error(
-            "`systemctl` nao encontrado. "
-            "Este script requer um sistema Linux com systemd."
+            "`systemctl` not found. "
+            "This script requires a Linux system with systemd."
         )
         return False
     except subprocess.TimeoutExpired:
         logger.error(
-            "Timeout ao reiniciar Unbound (>30s). "
-            "Verifica o estado com: sudo systemctl status unbound"
+            "Timeout restarting Unbound (>30s). "
+            "Check status with: sudo systemctl status unbound"
         )
         return False
     except PermissionError:
         logger.critical(
-            "PERMISSAO NEGADA ao executar systemctl.\n"
-            "Execute o script com: sudo python3 sync_iocs.py"
+            "PERMISSION DENIED executing systemctl.\n"
+            "Run script with: sudo python3 sync_iocs.py"
         )
         return False
 
 
 # ---------------------------------------------------------------------------
-# VERIFICAÇÃO DE PRIVILÉGIOS
+# PRIVILEGE VERIFICATION
 # ---------------------------------------------------------------------------
 
 def check_root_privileges(logger: logging.Logger, dry_run: bool = False) -> None:
-    """
-    Verifica se o script está a ser executado com privilégios de root.
+    """Verifies that script is running with root / administrative privileges.
 
-    Necessário para:
-        - Escrever em /etc/unbound/unbound.conf.d/
-        - Executar systemctl restart unbound
+    Required for:
+        - Writing to /etc/unbound/unbound.conf.d/
+        - Executing systemctl restart unbound
 
-    Em modo dry-run ou Windows (dev), o aviso é emitido mas o script não termina.
+    In dry-run mode or Windows (dev environment), a warning is logged instead.
     """
     is_root = False
     if hasattr(os, "geteuid"):
         is_root = (os.geteuid() == 0)
     else:
-        # Plataforma Windows (ambiente de desenvolvimento/teste)
+        # Windows platform (development/testing environment)
         try:
             import ctypes
             is_root = bool(ctypes.windll.shell32.IsUserAnAdmin())
@@ -1110,79 +954,79 @@ def check_root_privileges(logger: logging.Logger, dry_run: bool = False) -> None
     if not is_root:
         if dry_run or os.name == "nt":
             logger.warning(
-                "Sem privilegios root/admin — Permitido em modo --dry-run ou desenvolvimento Windows.\n"
-                "Em producao Ubuntu execute com: sudo python3 sync_iocs.py"
+                "Running without root/admin privileges — Allowed in --dry-run or Windows development mode.\n"
+                "In Ubuntu production, run with: sudo python3 sync_iocs.py"
             )
         else:
             logger.critical(
-                "Este script requer privilegios de root.\n"
-                "Execute com: sudo python3 sync_iocs.py"
+                "This script requires root privileges.\n"
+                "Run with: sudo python3 sync_iocs.py"
             )
             sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
-# PONTO DE ENTRADA — MAIN
+# ENTRYPOINT — MAIN
 # ---------------------------------------------------------------------------
 
 def parse_arguments() -> argparse.Namespace:
-    """Define e analisa os argumentos da linha de comandos."""
+    """Defines and parses command-line arguments."""
     parser = argparse.ArgumentParser(
         prog="sync_iocs.py",
         description=(
             "DNS Sinkhole Threat Intelligence Sync Engine — "
-            "Sincroniza IoCs OSINT com Unbound e SQLite"
+            "Synchronizes OSINT IoCs with Unbound and SQLite"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Exemplos:
-  sudo python3 sync_iocs.py                # Execucao normal
-  sudo python3 sync_iocs.py --dry-run      # Simula sem escrever nada
-  sudo python3 sync_iocs.py --verbose      # Modo debug verboso
-  sudo python3 sync_iocs.py --no-restart   # Sem reiniciar Unbound
-  sudo python3 sync_iocs.py --refresh-ip   # Atualiza IP no threat_feed.conf sem descarregar feeds
+Examples:
+  sudo python3 sync_iocs.py                # Standard sync
+  sudo python3 sync_iocs.py --dry-run      # Dry-run simulation
+  sudo python3 sync_iocs.py --verbose      # Verbose debug logging
+  sudo python3 sync_iocs.py --no-restart   # Update configs without restarting Unbound
+  sudo python3 sync_iocs.py --refresh-ip   # Fast-path IP update in threat_feed.conf
         """,
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Simula toda a execucao sem escrever ficheiros, BD ou reiniciar servicos.",
+        help="Simulates execution without writing files, database records, or restarting services.",
     )
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
-        help="Activa logging de nivel DEBUG para diagnostico detalhado.",
+        help="Enables DEBUG logging for detailed diagnostics.",
     )
     parser.add_argument(
         "--no-restart",
         action="store_true",
-        help="Aplica a configuracao mas nao reinicia o Unbound.",
+        help="Applies configuration but skips restarting Unbound DNS.",
     )
     parser.add_argument(
         "--db-path",
         type=Path,
         default=DATABASE_PATH,
-        help=f"Caminho para o ficheiro SQLite. Default: {DATABASE_PATH}",
+        help=f"Path to SQLite database file. Default: {DATABASE_PATH}",
     )
     parser.add_argument(
         "--conf-path",
         type=Path,
         default=UNBOUND_CONF_PATH,
-        help=f"Caminho para o ficheiro de configuracao Unbound. Default: {UNBOUND_CONF_PATH}",
+        help=f"Path to Unbound configuration file. Default: {UNBOUND_CONF_PATH}",
     )
     parser.add_argument(
         "--sinkhole-ip",
         type=str,
         default=SINKHOLE_IP,
-        help=f"IP de destino do sinkhole. Default: auto-detetado ({SINKHOLE_IP})",
+        help=f"Sinkhole destination IP. Default: auto-detected ({SINKHOLE_IP})",
     )
     parser.add_argument(
         "--refresh-ip",
         action="store_true",
         help=(
-            "Modo rapido: reescreve o threat_feed.conf com o IP atual "
-            "sem re-descarregar os feeds OSINT da internet. "
-            "Ideal ao mudar de rede Wi-Fi."
+            "Fast mode: rewrites threat_feed.conf with current active IP "
+            "without re-downloading OSINT threat feeds from the internet. "
+            "Ideal when switching Wi-Fi or DHCP leases."
         ),
     )
     return parser.parse_args()
@@ -1194,109 +1038,105 @@ def refresh_sinkhole_ip(
     logger: logging.Logger,
     dry_run: bool = False,
 ) -> bool:
-    """
-    Reescreve rapidamente o IP no threat_feed.conf existente sem re-descarregar feeds.
+    """Quickly rewrites sinkhole IP in existing threat_feed.conf without re-downloading feeds.
 
-    Lê o ficheiro atual, substitui todas as ocorrências do IP antigo pelo novo,
-    valida com unbound-checkconf e reinicia o Unbound.
-
-    Ideal para quando o utilizador muda de rede Wi-Fi e o IP da VM muda.
+    Reads existing file, replaces previous IP occurrences with the new IP,
+    validates with unbound-checkconf, and reloads Unbound.
 
     Args:
-        conf_path: Caminho para o threat_feed.conf
-        new_ip:    Novo IP dinâmico detetado
-        logger:    Logger do módulo
-        dry_run:   Se True, simula sem escrever
+        conf_path: Path to threat_feed.conf
+        new_ip:    Newly detected local IP
+        logger:    Logger instance
+        dry_run:   If True, simulates without writing to disk
 
     Returns:
-        True se concluído com sucesso, False caso contrário
+        True if successfully completed, False otherwise
     """
     if not conf_path.exists():
         logger.error(
-            "Ficheiro %s nao encontrado.\n"
-            "Executa primeiro uma sincronizacao completa: sudo python3 sync_iocs.py",
+            "File %s not found. Perform full initial sync: sudo python3 sync_iocs.py",
             conf_path,
         )
         return False
 
     content = conf_path.read_text(encoding="utf-8")
 
-    # Extrai o IP antigo do cabeçalho (linha '# Sinkhole IP: x.x.x.x')
+    # Extract old IP from header comment ('# Sinkhole IP: x.x.x.x')
     old_ip_match = re.search(r"# Sinkhole IP:\s*(\d+\.\d+\.\d+\.\d+)", content)
     if old_ip_match:
         old_ip = old_ip_match.group(1)
     else:
-        # Fallback: extrai o IP da primeira regra local-data
+        # Fallback: extract IP from first local-data entry
         data_match = re.search(r'local-data:.*?A\s+(\d+\.\d+\.\d+\.\d+)', content)
         if data_match:
             old_ip = data_match.group(1)
         else:
-            logger.error("Nao foi possivel detetar o IP antigo em %s", conf_path)
+            logger.error("Unable to detect previous IP in %s", conf_path)
             return False
 
     if old_ip == new_ip:
         logger.info(
-            "IP ja esta atualizado (%s). Nenhuma alteracao necessaria.", new_ip
+            "IP already up-to-date (%s). No changes needed.", new_ip
         )
         return True
 
-    logger.info("A atualizar IP do Sinkhole: %s -> %s", old_ip, new_ip)
+    logger.info("Updating Sinkhole IP: %s -> %s", old_ip, new_ip)
 
-    # Substituição global do IP antigo pelo novo
+    # Replace old IP with new IP
     new_content = content.replace(old_ip, new_ip)
 
-    # Atualiza o timestamp no cabeçalho
+    # Update timestamp header
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     new_content = re.sub(
-        r"# Data:.*",
-        f"# Data: {timestamp}",
+        r"# Timestamp:.*",
+        f"# Timestamp: {timestamp}",
         new_content,
     )
 
     if dry_run:
-        logger.info("[DRY-RUN] IP seria atualizado de %s para %s em %s", old_ip, new_ip, conf_path)
+        logger.info("[DRY-RUN] IP would be updated from %s to %s in %s", old_ip, new_ip, conf_path)
         return True
 
     try:
         conf_path.write_text(new_content, encoding="utf-8")
-        logger.info("Ficheiro %s atualizado com IP %s", conf_path, new_ip)
+        logger.info("Configuration %s updated with IP %s", conf_path, new_ip)
     except (PermissionError, OSError) as exc:
-        logger.critical("Erro ao escrever em %s: %s", conf_path, exc)
+        logger.critical("Error writing to %s: %s", conf_path, exc)
         return False
 
-    # Validar e reiniciar
+    # Validate and reload Unbound
     return restart_unbound(logger=logger, dry_run=dry_run)
 
 
 def main() -> None:
-    """
-    Ponto de entrada principal do script de sincronização de IoCs.
+    """Main execution entrypoint for threat intelligence synchronization.
 
-    Fluxo de execução:
-        1. Parse de argumentos CLI
-        2. Configuração do logger
-        3. Verificação de privilégios root
-        4. Se --refresh-ip: apenas atualiza o IP no ficheiro existente e reinicia
-        5. Download e processamento de todas as feeds OSINT
-        6. Geração do ficheiro de configuração Unbound
-        7. Persistência na base de dados SQLite
-        8. Restart do serviço Unbound (opcional)
-        9. Relatório final de execução
+    Execution lifecycle:
+        1. Parse CLI arguments
+        2. Configure logging
+        3. Check root / administrator privileges
+        4. If --refresh-ip: fast-path IP update and restart
+        5. Fetch and normalize OSINT threat feeds
+        6. Apply allowlist filtering (false positive prevention)
+        7. Generate Unbound sinkhole configuration file
+        8. Persist IoCs into SQLite database (WAL mode)
+        9. Restart Unbound DNS service
+        10. Output execution telemetry summary
     """
     args = parse_arguments()
     logger = setup_logging(verbose=args.verbose)
 
-    # --- Verificação de privilégios ---
+    # --- Privilege check ---
     check_root_privileges(logger, dry_run=args.dry_run)
 
     if args.dry_run:
-        logger.info("MODO DRY-RUN ACTIVADO — Nenhuma alteracao sera aplicada.")
+        logger.info("DRY-RUN MODE ACTIVE — No persistent changes will be made.")
 
-    # --- Modo Rápido: Apenas atualizar IP (sem re-descarregar feeds) ---
+    # --- Fast-path: Update IP only ---
     if args.refresh_ip:
         logger.info("=" * 65)
-        logger.info("MODO REFRESH-IP — Atualizacao rapida de IP no Sinkhole")
-        logger.info("IP detetado: %s", args.sinkhole_ip)
+        logger.info("REFRESH-IP MODE — Fast Sinkhole IP Update")
+        logger.info("Detected IP: %s", args.sinkhole_ip)
         logger.info("=" * 65)
         success = refresh_sinkhole_ip(
             conf_path=args.conf_path,
@@ -1308,19 +1148,19 @@ def main() -> None:
 
     start_time = time.monotonic()
 
-    # --- Fase 1: Recolha de IoCs ---
+    # --- Phase 1: Threat feed ingestion ---
     unique_domains, all_iocs = collect_all_iocs(logger)
 
     if not unique_domains:
         logger.error(
-            "Nenhum dominio valido encontrado em nenhuma fonte.\n"
-            "Verifica conectividade a internet e tenta novamente."
+            "No valid threat domains retrieved from active sources.\n"
+            "Verify network connectivity and retry."
         )
         sys.exit(1)
 
-    # --- Fase 2: Geração da configuração Unbound ---
+    # --- Phase 2: Unbound configuration generation ---
     logger.info("-" * 65)
-    logger.info("A gerar configuracao Unbound...")
+    logger.info("Generating Unbound configuration...")
     generate_unbound_config(
         domains=unique_domains,
         sinkhole_ip=args.sinkhole_ip,
@@ -1329,9 +1169,9 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    # --- Fase 3: Persistência na BD SQLite ---
+    # --- Phase 3: SQLite persistence ---
     logger.info("-" * 65)
-    logger.info("A persistir IoCs na base de dados...")
+    logger.info("Persisting IoCs to SQLite database...")
     persist_iocs_to_database(
         iocs=all_iocs,
         db_path=args.db_path,
@@ -1339,21 +1179,21 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    # --- Fase 4: Restart do Unbound ---
+    # --- Phase 4: Unbound reload ---
     if not args.no_restart:
         logger.info("-" * 65)
         restart_unbound(logger=logger, dry_run=args.dry_run)
     else:
-        logger.info("Restart do Unbound ignorado (--no-restart).")
+        logger.info("Unbound reload skipped (--no-restart).")
 
-    # --- Relatório Final ---
+    # --- Telemetry Summary ---
     elapsed = time.monotonic() - start_time
     logger.info("=" * 65)
-    logger.info("Sincronizacao concluida em %.2f segundos", elapsed)
-    logger.info("  Dominios unicos processados : %d", len(unique_domains))
-    logger.info("  Fontes activas              : %d", len(ACTIVE_TEXT_FEEDS + ACTIVE_API_FEEDS))
-    logger.info("  Configuracao Unbound        : %s", args.conf_path)
-    logger.info("  Base de dados               : %s", args.db_path)
+    logger.info("Synchronization completed in %.2f seconds", elapsed)
+    logger.info("  Unique domains processed : %d", len(unique_domains))
+    logger.info("  Active feeds             : %d", len(ACTIVE_TEXT_FEEDS + ACTIVE_API_FEEDS))
+    logger.info("  Unbound configuration    : %s", args.conf_path)
+    logger.info("  Database path            : %s", args.db_path)
     logger.info("=" * 65)
 
 
