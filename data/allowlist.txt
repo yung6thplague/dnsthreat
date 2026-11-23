@@ -1,0 +1,14 @@
+# Default allowlist of trusted domains and internal infra
+# One domain per line; comments starting with # and empty lines are ignored
+google.com
+microsoft.com
+apple.com
+cloudflare.com
+github.com
+amazon.com
+windowsupdate.com
+ubuntu.com
+debian.org
+local
+localhost
+localdomain

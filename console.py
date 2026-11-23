@@ -57,6 +57,13 @@ except ImportError:
     def generate_self_signed_cert(domain=None, days=365, force=False):
         return False, "app.config não disponível para geração automática"
 
+# Importa o módulo de Machine Learning / Extractor
+try:
+    from agent.extractor import DomainExtractor, ExtractionResult
+    HAS_ML_MODULE = True
+except ImportError:
+    HAS_ML_MODULE = False
+
 # Referência global ao processo filho ativo para limpeza
 active_process: Optional[subprocess.Popen] = None
 
@@ -200,7 +207,7 @@ def display_menu() -> None:
         table.add_row("[1]", f"Iniciar Servidor Web ({ssl_desc})", f"sudo ./venv/bin/uvicorn app.main:app ({ssl_desc})")
         table.add_row("[2]", "Sincronizar Feeds de Ameaças", "sudo python3 sync_iocs.py")
         table.add_row("[3]", "Reiniciar Unbound DNS", "sudo systemctl restart unbound")
-        table.add_row("[4]", "Iniciar Agente de Machine Learning", "[Módulo IA - Analisador Heurístico]")
+        table.add_row("[4]", "Agente de Machine Learning / Extractor", "Análise de Texto & Allowlist [Ativo]")
         table.add_row("[5]", f"Atualizar IP do Sinkhole ({get_local_ip()})", "sudo python3 sync_iocs.py --refresh-ip")
         table.add_row("[6]", "Sair da Consola", "Encerramento seguro do CLI")
 
@@ -211,7 +218,7 @@ def display_menu() -> None:
         print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar Servidor Web ({ssl_desc}){ANSI_RESET}   {ANSI_GRAY}(sudo ./venv/bin/uvicorn ... {ssl_desc}){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}       {ANSI_GRAY}(sudo python3 sync_iocs.py){ANSI_RESET}")
         print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}              {ANSI_GRAY}(sudo systemctl restart unbound){ANSI_RESET}")
-        print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Iniciar Agente de Machine Learning{ANSI_RESET} {ANSI_YELLOW}[Módulo IA em desenvolvimento]{ANSI_RESET}")
+        print(f"  {ANSI_GREEN}[4]{ANSI_RESET} {ANSI_BOLD}Agente de Machine Learning / Extractor{ANSI_RESET} {ANSI_GREEN}[Ativo]{ANSI_RESET}")
         print(f"  {ANSI_GREEN}[5]{ANSI_RESET} {ANSI_BOLD}Atualizar IP do Sinkhole{ANSI_RESET}          {ANSI_CYAN}[IP atual: {current_ip}]{ANSI_RESET}")
         print(f"  {ANSI_RED}[6]{ANSI_RESET} {ANSI_BOLD}Sair{ANSI_RESET}\n")
 
@@ -346,14 +353,80 @@ def handle_option_3() -> None:
 
 
 def handle_option_4() -> None:
-    """Opção 4: Iniciar Agente de Machine Learning."""
-    warning_msg = "Módulo IA em desenvolvimento..."
-    if HAS_RICH and rich_console:
-        rich_console.print(f"\n[bold yellow][!] {warning_msg}[/bold yellow]\n")
-    else:
-        print(f"\n{ANSI_YELLOW}{ANSI_BOLD}[!] {warning_msg}{ANSI_RESET}\n")
-    time.sleep(1.5)
-    input(f"{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+    """Opção 4: Agente de Machine Learning / Extrator e Filtro de Domínios."""
+    if not HAS_ML_MODULE:
+        warning_msg = "Módulo agent.extractor não encontrado."
+        print(f"\n{ANSI_RED}[✗] {warning_msg}{ANSI_RESET}\n")
+        input(f"{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+        return
+
+    extractor = DomainExtractor(auto_load_data_dir=True, data_dir=PROJECT_DIR / "data")
+
+    print(f"\n{ANSI_CYAN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
+    print(f" {ANSI_BOLD}AGENTE DE MACHINE LEARNING — EXTRATOR & ALLOWLIST DE AMEAÇAS{ANSI_RESET}")
+    print(f" {ANSI_GRAY}Allowlist ativa:{ANSI_RESET} {ANSI_GREEN}{len(extractor.allowlist.exact_allowed)} domínios carregados{ANSI_RESET}")
+    print(f"{ANSI_CYAN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
+
+    print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Analisar Texto Livre / Relatório / Indicadores Desarmados{ANSI_RESET}")
+    print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Processar Ficheiro de Texto ou Log de Ameaças{ANSI_RESET}")
+    print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Ver Domínios Carregados na Allowlist Local{ANSI_RESET}")
+    print(f"  {ANSI_GRAY}[0] Voltar ao menu principal{ANSI_RESET}")
+
+    sub = input(f"\n{ANSI_BOLD}Escolha uma opção [padrão: 1]: {ANSI_RESET}").strip() or "1"
+
+    if sub == "0":
+        return
+
+    if sub == "1":
+        print(f"\n{ANSI_YELLOW}[*] Cola o texto ou indicadores (ex: hxxps://c2[.]evil[.]top/gate, malware.xyz):{ANSI_RESET}")
+        print(f"{ANSI_GRAY}(Pressiona ENTER após o texto){ANSI_RESET}")
+        user_input = input(f"{ANSI_CYAN}Texto: {ANSI_RESET}").strip()
+        if not user_input:
+            print(f"{ANSI_YELLOW}[!] Nenhum texto fornecido.{ANSI_RESET}")
+        else:
+            res = extractor.extract_from_text(user_input)
+            _render_extraction_result(res)
+
+    elif sub == "2":
+        filepath_str = input(f"\n{ANSI_BOLD}Caminho do ficheiro a processar: {ANSI_RESET}").strip()
+        path = Path(filepath_str)
+        if not path.is_file():
+            print(f"{ANSI_RED}[✗] Ficheiro não encontrado: {path}{ANSI_RESET}")
+        else:
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+                res = extractor.extract_from_text(content)
+                _render_extraction_result(res)
+            except Exception as e:
+                print(f"{ANSI_RED}[✗] Erro ao ler ficheiro: {e}{ANSI_RESET}")
+
+    elif sub == "3":
+        allowed = sorted(extractor.allowlist.exact_allowed)
+        print(f"\n{ANSI_BOLD}Domínios Confiáveis na Allowlist ({len(allowed)} total):{ANSI_RESET}")
+        for idx, d in enumerate(allowed[:50], 1):
+            print(f"  {ANSI_GREEN}✓{ANSI_RESET} {d}")
+        if len(allowed) > 50:
+            print(f"  {ANSI_GRAY}... e mais {len(allowed) - 50} domínios.{ANSI_RESET}")
+
+    input(f"\n{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
+
+
+def _render_extraction_result(result) -> None:
+    """Apresenta os resultados da extração de forma clara e visual."""
+    print(f"\n{ANSI_BOLD}--- RESULTADOS DO PIPELINE DE THREAT INTEL / ML ---{ANSI_RESET}")
+    print(f"Candidatos brutos processados: {result.total_raw_candidates}")
+    print(f"Domínios aprovados para bloqueio: {ANSI_GREEN}{ANSI_BOLD}{len(result.passed)}{ANSI_RESET}")
+    print(f"Domínios filtrados por allowlist: {ANSI_YELLOW}{ANSI_BOLD}{len(result.filtered)}{ANSI_RESET}\n")
+
+    if result.passed:
+        print(f"{ANSI_GREEN}{ANSI_BOLD}[!] Domínios Ameaça Aprovados (Desofuscados & Normalizados):{ANSI_RESET}")
+        for d in result.passed:
+            print(f"  {ANSI_RED}●{ANSI_RESET} {ANSI_BOLD}{d}{ANSI_RESET}")
+
+    if result.filtered:
+        print(f"\n{ANSI_YELLOW}{ANSI_BOLD}[i] Domínios Filtrados pela Allowlist (Falsos Positivos Evitados):{ANSI_RESET}")
+        for f in result.filtered:
+            print(f"  {ANSI_YELLOW}○{ANSI_RESET} {f.domain} {ANSI_GRAY}({f.reason}){ANSI_RESET}")
 
 
 def handle_option_5() -> None:

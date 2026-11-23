@@ -29,6 +29,13 @@ from typing import Optional
 
 import requests
 
+# Importa o motor de extração, normalização e allowlist de Machine Learning / Threat Intel
+try:
+    from agent.extractor import DomainExtractor, normalize_domain_candidate
+    HAS_ML_EXTRACTOR = True
+except ImportError:
+    HAS_ML_EXTRACTOR = False
+
 # ---------------------------------------------------------------------------
 # CONFIGURAÇÃO GLOBAL
 # ---------------------------------------------------------------------------
@@ -252,7 +259,11 @@ class BaseTextFeed(ABC):
 
                 seen_in_feed: set = set()
                 for line in lines:
-                    domain = self.parse_line(line)
+                    if HAS_ML_EXTRACTOR:
+                        domain = normalize_domain_candidate(line)
+                    else:
+                        domain = self.parse_line(line)
+
                     if domain and domain not in seen_in_feed:
                         seen_in_feed.add(domain)
                         result.iocs.append(
@@ -728,6 +739,29 @@ def collect_all_iocs(logger: logging.Logger) -> tuple:
             # (o primeiro a chegar fica registado com a sua fonte de origem)
 
     session.close()
+
+    # Aplica filtragem por allowlist (ML/Threat Intel) para evitar falsos positivos
+    if HAS_ML_EXTRACTOR:
+        logger.info("-" * 65)
+        logger.info("A aplicar Allowlist do modulo de Machine Learning / Threat Intel...")
+        try:
+            data_dir = DATABASE_PATH.parent
+            extractor = DomainExtractor(auto_load_data_dir=True, data_dir=data_dir)
+            filtered_iocs = []
+            allowed_count = 0
+            for ioc in all_iocs:
+                is_allowed, rule = extractor.allowlist.is_allowed(ioc.domain)
+                if is_allowed:
+                    allowed_count += 1
+                    logger.debug("Allowlist ignorou: %s (regra: %s)", ioc.domain, rule)
+                else:
+                    filtered_iocs.append(ioc)
+
+            all_iocs = filtered_iocs
+            unique_domains = {ioc.domain for ioc in all_iocs}
+            logger.info("Allowlist filtrou %d dominios legitimos/falsos positivos.", allowed_count)
+        except Exception as exc:
+            logger.warning("Falha ao aplicar allowlist: %s — prosseguindo com dados originais.", exc)
 
     logger.info("=" * 65)
     logger.info("Total de dominios unicos consolidados: %d", len(unique_domains))
