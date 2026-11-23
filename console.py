@@ -143,7 +143,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def render_banner() -> None:
-    """Renderiza o banner ASCII de dtblocker."""
+    """Renderiza o banner ASCII de dtblocker em verde proporcional."""
     clear_screen()
 
     banner_text = """
@@ -160,36 +160,40 @@ def render_banner() -> None:
            ▄    ▄          ▄      ▄       ▄         ▄     ▄       ▄    """
 
     if HAS_RICH and rich_console:
-        rich_console.print(f"[bold cyan]{banner_text}[/bold cyan]")
+        # Banner em verde e caixa proporcional de largura 73 (alinhada ao banner) em vermelho
+        rich_console.print(f"[bold green]{banner_text}[/bold green]")
         info_panel = Panel(
             Text.from_markup(
                 f"[dim white]Host:[/] [cyan]{platform.node()}[/] | "
                 f"[dim white]Sinkhole IP:[/] [bold yellow]{get_local_ip()}[/bold yellow] | "
                 f"[dim white]Data UTC:[/] [yellow]{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}[/]"
             ),
-            border_style="green",
+            border_style="red",
             title="[bold red]● DEFENSE ENGINE ACTIVE ●[/bold red]",
-            title_align="center"
+            title_align="center",
+            width=73
         )
         rich_console.print(info_panel)
     else:
-        print(f"{ANSI_CYAN}{ANSI_BOLD}{banner_text}{ANSI_RESET}")
-        print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}")
-        print(f" {ANSI_RED}{ANSI_BOLD}● DEFENSE ENGINE ACTIVE ●{ANSI_RESET}")
-        print(f" {ANSI_GRAY}Host:{ANSI_RESET} {ANSI_CYAN}{platform.node()}{ANSI_RESET} | {ANSI_GRAY}Sinkhole IP:{ANSI_RESET} {ANSI_YELLOW}{ANSI_BOLD}{get_local_ip()}{ANSI_RESET} | {ANSI_GRAY}Data UTC:{ANSI_RESET} {ANSI_YELLOW}{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}{ANSI_RESET}")
-        print(f"{ANSI_GREEN}{ANSI_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{ANSI_RESET}\n")
+        print(f"{ANSI_GREEN}{ANSI_BOLD}{banner_text}{ANSI_RESET}")
+        print(f"{ANSI_RED}{ANSI_BOLD}┌────────────────────── ● DEFENSE ENGINE ACTIVE ● ──────────────────────┐{ANSI_RESET}")
+        info_line = f" Host: {platform.node()} | Sinkhole IP: {get_local_ip()} | UTC: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}"
+        print(f"{ANSI_RED}{ANSI_BOLD}│{ANSI_RESET}{info_line:<71}{ANSI_RED}{ANSI_BOLD}│{ANSI_RESET}")
+        print(f"{ANSI_RED}{ANSI_BOLD}└───────────────────────────────────────────────────────────────────────┘{ANSI_RESET}\n")
+
 
 def display_menu() -> None:
-    """Apresenta o menu de seleção de opções formatado."""
+    """Apresenta o menu de seleção de opções formatado e proporcional."""
     if HAS_RICH and rich_console:
         table = Table(
-            title="[bold white]MENU DE OPERAÇÕES[/bold white]",
+            title="[bold red]MENU DE OPERAÇÕES[/bold red]",
             show_header=True,
             header_style="bold magenta",
-            border_style="cyan"
+            border_style="cyan",
+            width=73
         )
-        table.add_column("Opção", justify="center", style="bold green", width=8)
-        table.add_column("Ação", style="bold white", width=42)
+        table.add_column("Opção", justify="center", style="bold green", width=9)
+        table.add_column("Ação", style="bold white", width=60)
 
         table.add_row("[1]", "Iniciar servidor")
         table.add_row("[2]", "Sincronizar Feeds de Ameaças")
@@ -200,7 +204,7 @@ def display_menu() -> None:
 
         rich_console.print(table)
     else:
-        print(f" {ANSI_MAGENTA}{ANSI_BOLD}--- MENU DE OPERAÇÕES SECOPS ---{ANSI_RESET}")
+        print(f" {ANSI_RED}{ANSI_BOLD}--- MENU DE OPERAÇÕES ---{ANSI_RESET}")
         print(f"  {ANSI_GREEN}[1]{ANSI_RESET} {ANSI_BOLD}Iniciar servidor{ANSI_RESET}")
         print(f"  {ANSI_GREEN}[2]{ANSI_RESET} {ANSI_BOLD}Sincronizar Feeds de Ameaças{ANSI_RESET}")
         print(f"  {ANSI_GREEN}[3]{ANSI_RESET} {ANSI_BOLD}Reiniciar Unbound DNS{ANSI_RESET}")
