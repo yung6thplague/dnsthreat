@@ -29,11 +29,16 @@ from typing import Optional
 
 import requests
 
+# Garante que a raiz do projeto está no sys.path para execução via sudo noutras pastas
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 # Importa o motor de extração, normalização e allowlist de Machine Learning / Threat Intel
 try:
     from agent.extractor import DomainExtractor, normalize_domain_candidate
     HAS_ML_EXTRACTOR = True
-except ImportError:
+except Exception as e:
     HAS_ML_EXTRACTOR = False
 
 # ---------------------------------------------------------------------------

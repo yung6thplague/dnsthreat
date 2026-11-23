@@ -58,12 +58,15 @@ except ImportError:
         return False, "app.config não disponível para geração automática"
 
 # Importa o módulo de Machine Learning / Extractor e Classificador
+HAS_ML_MODULE = False
+ML_IMPORT_ERROR: Optional[str] = None
 try:
     from agent.extractor import DomainExtractor, ExtractionResult
     from agent.classifier import DomainClassifier, PredictionResult
     HAS_ML_MODULE = True
-except ImportError:
+except Exception as e:
     HAS_ML_MODULE = False
+    ML_IMPORT_ERROR = str(e)
 
 # Referência global ao processo filho ativo para limpeza
 active_process: Optional[subprocess.Popen] = None
@@ -356,8 +359,8 @@ def handle_option_3() -> None:
 def handle_option_4() -> None:
     """Opção 4: Agente de Machine Learning / Extrator, Allowlist e Classificador DGA."""
     if not HAS_ML_MODULE:
-        warning_msg = "Módulo agent (extractor/classifier) não encontrado."
-        print(f"\n{ANSI_RED}[✗] {warning_msg}{ANSI_RESET}\n")
+        err_detail = f"\n{ANSI_GRAY}Detalhe: {ML_IMPORT_ERROR}{ANSI_RESET}" if ML_IMPORT_ERROR else ""
+        print(f"\n{ANSI_RED}[✗] Módulo agent (extractor/classifier) indisponível.{err_detail}{ANSI_RESET}\n")
         input(f"{ANSI_GRAY}[Prime ENTER para continuar...]{ANSI_RESET}")
         return
 

@@ -7,8 +7,16 @@ FastAPI entrypoint handling:
    logs telemetry to SQLite WAL, and presents user_blocked.html landing page.
 """
 
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Dict, Optional
+
+# Garante que o diretório base do projeto está no sys.path para imports limpos
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
