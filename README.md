@@ -1,6 +1,6 @@
 # DTBLOCKER — DNS Threat Blocker & Sinkhole
 
-Solução integrada de **DNS Sinkhole**, **Threat Intelligence** e **Deteção de DGAs via Machine Learning**, concebida para intercetar tráfego malicioso em redes locais e fornecer telemetria em tempo real para analistas de segurança (SOC).
+Solução integrada de **DNS Sinkhole**, **Threat Intelligence** e **Machine Learning**, concebida para intercetar tráfego malicioso em redes locais e fornecer telemetria em tempo real para analistas de segurança (SOC).
 
 
 O sistema combina a resolução recursiva do **Unbound DNS** com uma camada web em **FastAPI** e base de dados **SQLite em modo WAL**  Consultas DNS para domínios maliciosos conhecidos ou gerados por algoritmos são redirecionadas para o IP da VM, apresentando uma página de bloqueio ao utilizador e registando auditoria detalhada no dashboard `/admin`.
